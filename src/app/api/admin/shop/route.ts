@@ -43,7 +43,7 @@ export async function GET(request: Request) {
     }
 
     const [rows]: any = await authPool.query(
-      `SELECT id, name, item_id, price, currency, quality, category, tier, class_mask, image, soap_item_count
+      `SELECT id, name, item_id, price, currency, quality, category, tier, class_mask, image, soap_item_count, service_type, service_data
        FROM shop_items
        ORDER BY id DESC`
     );
@@ -86,9 +86,14 @@ export async function POST(request: Request) {
     const image = String(body?.image || 'inv_misc_questionmark').trim() || 'inv_misc_questionmark';
     const soapCount = Math.max(1, Math.min(255, Number(body?.soapCount ?? 1)));
 
+    const service_type = String(body?.serviceType || 'none');
+    const service_data = body?.serviceData ? String(body.serviceData) : null;
+
     const safeItemId = Math.round(itemId);
     const safePrice = Math.round(price);
-    if (!name || !safeItemId || safeItemId <= 0 || !safePrice || safePrice <= 0) {
+    
+    // Allow itemId to be 0 for services
+    if (!name || (safeItemId <= 0 && service_type === 'none') || safeItemId < 0 || !safePrice || safePrice <= 0) {
       return NextResponse.json(
         { error: 'Datos invalidos. Revisa name, itemId y price.' },
         { status: 400 }
@@ -96,9 +101,9 @@ export async function POST(request: Request) {
     }
 
     const [result]: any = await authPool.query(
-      `INSERT INTO shop_items (name, item_id, price, currency, image, quality, category, tier, class_mask, soap_item_entry, soap_item_count)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [name, safeItemId, safePrice, currency, image, quality, category, tier, classMask, safeItemId, soapCount]
+      `INSERT INTO shop_items (name, item_id, price, currency, image, quality, category, tier, class_mask, soap_item_entry, soap_item_count, service_type, service_data)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [name, safeItemId, safePrice, currency, image, quality, category, tier, classMask, safeItemId || null, soapCount, service_type, service_data]
     );
 
     return NextResponse.json(

@@ -174,13 +174,14 @@ export async function POST(request: Request) {
             let accountId: number | null = null;
             try {
                 const [insertResult]: any = await connection.query(
-                    'INSERT INTO account (username, salt, verifier, email, expansion, joindate) VALUES (?, ?, ?, ?, ?, NOW())',
+                    'INSERT INTO account (username, salt, verifier, email, expansion, dp, joindate) VALUES (?, ?, ?, ?, ?, ?, NOW())',
                     [
                         username.toUpperCase(),
                         salt,
                         verifier,
                         String(originalEmail).toLowerCase(),
-                        2 // 2 = WotLK expansion (3.3.5a)
+                        2, // 2 = WotLK expansion (3.3.5a)
+                        10 // dp inicial
                     ]
                 );
                 accountId = Number(insertResult?.insertId || 0) || null;
@@ -190,12 +191,13 @@ export async function POST(request: Request) {
                 }
 
                 const [insertResult]: any = await connection.query(
-                    'INSERT INTO account (username, salt, verifier, expansion, joindate) VALUES (?, ?, ?, ?, NOW())',
+                    'INSERT INTO account (username, salt, verifier, expansion, dp, joindate) VALUES (?, ?, ?, ?, ?, NOW())',
                     [
                         username.toUpperCase(),
                         salt,
                         verifier,
-                        2
+                        2,
+                        10 // dp inicial
                     ]
                 );
                 accountId = Number(insertResult?.insertId || 0) || null;

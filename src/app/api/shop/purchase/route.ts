@@ -11,6 +11,8 @@ type ShopItemRow = {
   currency: string;
   soap_item_entry?: number | null;
   soap_item_count?: number | null;
+  service_type?: string;
+  service_data?: string | null;
 };
 
 type UserRow = {
@@ -132,7 +134,7 @@ export async function POST(request: Request) {
     await connection.beginTransaction();
 
     const [itemRows] = await connection.query(
-      'SELECT id, name, price, currency, soap_item_entry, soap_item_count FROM shop_items WHERE id = ? LIMIT 1',
+      'SELECT id, name, price, currency, soap_item_entry, soap_item_count, service_type, service_data FROM shop_items WHERE id = ? LIMIT 1',
       [itemId]
     );
     const items = itemRows as ShopItemRow[];
@@ -223,12 +225,60 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'No se pudieron descontar los puntos' }, { status: 400 });
     }
 
-    if (character && item.soap_item_entry) {
-      await sendSoapItem({
-        characterName: character.name,
-        itemEntry: Number(item.soap_item_entry),
-        itemCount: Number(item.soap_item_count || 1),
-      });
+    if (character) {
+      // 1. SOAP Items (Standard or Bundle)
+      if (item.service_type === 'bundle' && item.service_data) {
+        try {
+          const bundleItems = JSON.parse(item.service_data);
+          if (Array.isArray(bundleItems)) {
+            for (const b of bundleItems) {
+              await sendSoapItem({
+                characterName: character.name,
+                itemEntry: Number(b.id || b.item_id),
+                itemCount: Number(b.count || 1),
+              });
+            }
+          }
+        } catch (e) { console.error('Error parsing bundle data:', e); }
+      } else if (item.soap_item_entry) {
+        await sendSoapItem({
+          characterName: character.name,
+          itemEntry: Number(item.soap_item_entry),
+          itemCount: Number(item.soap_item_count || 1),
+        });
+      }
+
+      // 2. Database Services
+      if (item.service_type && item.service_type !== 'none' && item.service_type !== 'bundle') {
+        const charPool = pool; // Assuming 'pool' is the characters pool based on previous imports
+        
+        switch (item.service_type) {
+          case 'name_change':
+            await charPool.query('UPDATE characters SET at_login = at_login | 1 WHERE guid = ?', [character.guid]);
+            break;
+          case 'race_change':
+            await charPool.query('UPDATE characters SET at_login = at_login | 128 WHERE guid = ?', [character.guid]);
+            break;
+          case 'faction_change':
+            await charPool.query('UPDATE characters SET at_login = at_login | 64 WHERE guid = ?', [character.guid]);
+            break;
+          case 'level_boost':
+            const targetLevel = Number(item.service_data) || 60;
+            await charPool.query('UPDATE characters SET level = ? WHERE guid = ?', [targetLevel, character.guid]);
+            break;
+          case 'gold_pack':
+            const goldAmount = Number(item.service_data) || 1000;
+            const copperAmount = goldAmount * 10000;
+            await charPool.query('UPDATE characters SET money = money + ? WHERE guid = ?', [copperAmount, character.guid]);
+            break;
+          case 'character_transfer':
+            const targetAccountId = Number(body?.targetAccountId);
+            if (targetAccountId > 0) {
+              await charPool.query('UPDATE characters SET account = ? WHERE guid = ?', [targetAccountId, character.guid]);
+            }
+            break;
+        }
+      }
     }
 
     await connection.query(
@@ -274,6 +324,8 @@ export async function POST(request: Request) {
       {
         error: 'Error en el servidor',
         details: error.message,
+        code: error.code,
+        stack: error.stack,
       },
       { status: 500 }
     );

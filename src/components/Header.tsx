@@ -114,11 +114,11 @@ export default function Header() {
 
         {/* Logo */}
         <Link href="/" className="flex items-center gap-3 shrink-0 group">
-          <div className="relative w-11 h-11 shrink-0">
+          <div className="relative w-16 h-16 shrink-0">
             <div className="absolute inset-0 rounded-full bg-gradient-to-br from-cyan-400/30 to-purple-600/40 blur-md scale-110 group-hover:opacity-100 opacity-70 transition-opacity duration-300" />
             <div className="absolute inset-0 rounded-full border border-cyan-300/40" />
             <Image
-              src="/shadow-azeroth.png"
+              src="/shadow_azeroth.png"
               alt="Shadow Azeroth"
               fill
               className="object-cover rounded-full"
@@ -142,11 +142,10 @@ export default function Header() {
               <Link
                 key={link.name}
                 href={link.href}
-                className={`relative px-4 py-2 rounded-lg text-sm font-bold uppercase tracking-widest transition-all duration-200 ${
-                  isActive
+                className={`relative px-4 py-2 rounded-lg text-sm font-bold uppercase tracking-widest transition-all duration-200 ${isActive
                     ? 'text-white bg-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]'
                     : 'text-slate-300 hover:text-white hover:bg-white/8'
-                }`}
+                  }`}
               >
                 {link.name}
                 {isActive && (
@@ -164,13 +163,13 @@ export default function Header() {
               <div className="hidden lg:flex items-center gap-3 px-3 pr-4 py-2 rounded-xl bg-black/35 border border-cyan-400/30">
                 <Image
                   src="/coin.png"
-                  alt="Miikii Coins"
+                  alt="Créditos"
                   width={30}
                   height={30}
                   className="rounded-full ring-2 ring-purple-400/40 shadow-[0_0_18px_rgba(168,85,247,0.45)] shrink-0"
                 />
                 <div className="leading-tight">
-                  <p className="text-[10px] uppercase tracking-[0.18em] text-cyan-200/80 font-black">Miikii Coins</p>
+                  <p className="text-[10px] uppercase tracking-[0.18em] text-cyan-200/80 font-black">Créditos</p>
                   <p className="text-sm font-black text-white">{donationPoints.toLocaleString()}</p>
                 </div>
               </div>
@@ -183,14 +182,7 @@ export default function Header() {
                 <User className="w-4 h-4 text-cyan-300" />
                 <span className="text-sm font-bold text-white max-w-[120px] truncate">{username}</span>
               </Link>
-              <button
-                type="button"
-                onClick={handleLogout}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-red-900/40 border border-red-500/40 hover:bg-red-800/60 hover:border-red-400/60 text-red-200 hover:text-white text-sm font-bold transition-all duration-200"
-              >
-                <LogOut className="w-4 h-4" />
-                <span className="hidden sm:inline">Cerrar sesión</span>
-              </button>
+              {/* Botón de cerrar sesión eliminado, ya está abajo */}
             </>
           ) : null}
 
@@ -216,11 +208,10 @@ export default function Header() {
                   key={link.name}
                   href={link.href}
                   onClick={() => setMenuOpen(false)}
-                  className={`px-4 py-3 rounded-xl text-sm font-bold uppercase tracking-wider transition-all ${
-                    isActive
+                  className={`px-4 py-3 rounded-xl text-sm font-bold uppercase tracking-wider transition-all ${isActive
                       ? 'text-white bg-white/10'
                       : 'text-slate-300 hover:text-white hover:bg-white/8'
-                  }`}
+                    }`}
                 >
                   {link.name}
                 </Link>

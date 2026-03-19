@@ -30,29 +30,33 @@ async function getConnection() {
  */
 export async function getTableData<T>(
   table: string,
-  conditions?: { [key: string]: unknown },
+  conditions?: { [key: string]: string | number | boolean | null },
   limit?: number
 ): Promise<T[]> {
   const connection = await getConnection();
 
   try {
     let query = `SELECT * FROM \`${table}\``;
-    const params: unknown[] = [];
+    const params: (string | number | boolean | null)[] = [];
 
     if (conditions && Object.keys(conditions).length > 0) {
       const whereClause = Object.keys(conditions)
         .map((key) => `\`${key}\` = ?`)
         .join(' AND ');
       query += ` WHERE ${whereClause}`;
-      params.push(...Object.values(conditions));
+      params.push(...(Object.values(conditions) as (string | number | boolean | null)[]));
     }
 
     if (limit) {
       query += ` LIMIT ${limit}`;
     }
 
-    const [rows] = await connection.execute(query, params);
-    return rows as T[];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const conn = connection as any;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    const rows = ((await conn.execute(query, params)) as any[])[0] as T[];
+    return rows;
+
   } catch (error) {
     console.error(`Error obteniendo datos de ${table}:`, error);
     throw error;

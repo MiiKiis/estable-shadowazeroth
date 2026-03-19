@@ -14,6 +14,8 @@ type ShopItemRow = {
   class_mask?: number | null;
   soap_item_entry?: number | null;
   soap_item_count?: number | null;
+  service_type: string | null;
+  service_data: string | null;
 };
 
 export async function GET() {
@@ -21,7 +23,8 @@ export async function GET() {
     const [rows] = await authPool.query(
       `SELECT id, item_id, image, name, price, currency, quality,
               category, tier, class_mask,
-              soap_item_entry, soap_item_count
+              soap_item_entry, soap_item_count,
+              service_type, service_data
        FROM shop_items
        ORDER BY category ASC, tier ASC, price ASC, id ASC`
     );
@@ -39,6 +42,8 @@ export async function GET() {
       class_mask: Number(item.class_mask ?? 0),
       soap_item_entry: item.soap_item_entry ?? null,
       soap_item_count: item.soap_item_count ?? 1,
+      service_type: item.service_type || 'none',
+      service_data: item.service_data || null,
     }));
 
     return NextResponse.json({ items }, { status: 200 });

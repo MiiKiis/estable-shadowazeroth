@@ -10,15 +10,24 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'accountId invalido' }, { status: 400 });
     }
 
-    const [rows]: any = await authPool.query(
-      'SELECT id, vp, dp FROM account WHERE id = ? LIMIT 1',
-      [accountId]
-    );
+    let rows, accessRows;
+    try {
+      rows = ((await (authPool as any).query(
+        'SELECT id, vp, dp FROM account WHERE id = ? LIMIT 1',
+        [accountId]
+      )) as any[])[0];
+    } catch (dbError: any) {
+      return NextResponse.json({ error: 'Error en consulta account', details: dbError.message, code: dbError.code }, { status: 500 });
+    }
 
-    const [accessRows]: any = await authPool.query(
-      'SELECT MAX(gmlevel) AS gmlevel FROM account_access WHERE id = ?',
-      [accountId]
-    );
+    try {
+      accessRows = ((await (authPool as any).query(
+        'SELECT MAX(gmlevel) AS gmlevel FROM account_access WHERE id = ?',
+        [accountId]
+      )) as any[])[0];
+    } catch (dbError: any) {
+      return NextResponse.json({ error: 'Error en consulta access', details: dbError.message, code: dbError.code }, { status: 500 });
+    }
 
     if (!rows || rows.length === 0) {
       return NextResponse.json({ error: 'Cuenta no encontrada' }, { status: 404 });
@@ -40,6 +49,6 @@ export async function GET(request: Request) {
     });
   } catch (error: any) {
     console.error('Account points API error:', error);
-    return NextResponse.json({ error: 'Error del servidor', details: error.message }, { status: 500 });
+    return NextResponse.json({ error: 'Error del servidor', details: error.message, code: error.code }, { status: 500 });
   }
 }

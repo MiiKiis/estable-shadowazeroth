@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import "./effects.css";
-import Header from "@/components/Header";
+import ClientHeader from "@/components/ClientHeader";
 import Footer from "@/components/Footer";
 
 const geistSans = Geist({
@@ -16,14 +16,14 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "SHADOW AZEROTH | Servidor Privado WoW 3.3.5a - Educativo",
-  description: "Shadow Azeroth es un servidor privado WoW 3.3.5a creado con fines educativos. No está afiliado con Blizzard Entertainment. Experiencia blizzlike con comunidad activa. Únete al mejor servidor de Rasganorte.",
-  keywords: "WoW, World of Warcraft, Shadow Azeroth, WotLK, 3.3.5a, Servidor Privado, MMORPG, Educativo, Blizzlike, Rasganorte, Horda, Alianza",
+  title: "Shadow Azeroth - Servidor WoW 3.3.5a WotLK High Rate",
+  description: "Únete a la mejor comunidad de Wrath of the Lich King. Experiencia 3.3.5a estable, eventos únicos y comunidad activa en español e inglés. Proyecto educativo basado en emulación de código abierto (AzerothCore). Latencia baja desde Bolivia/Latam, scripts personalizados y hardware optimizado.",
+  keywords: "WoW, World of Warcraft, Shadow Azeroth, WotLK, 3.3.5a, Servidor Privado, MMORPG, AzerothCore, High Rate, Comunidad, Latencia Baja, Bolivia, Latinoamérica, Español, Inglés, Eventos, Scripts Personalizados, Hardware Optimizado",
   authors: [{ name: "Shadow Azeroth Team" }],
   creator: "Shadow Azeroth Team",
   openGraph: {
-    title: "SHADOW AZEROTH - Servidor WoW 3.3.5a Educativo",
-    description: "Servidor privado WoW 3.3.5a con fines educativos. No afiliado con Blizzard Entertainment. Experiencia blizzlike genuina y comunidad activa.",
+    title: "Shadow Azeroth - Servidor WoW 3.3.5a WotLK High Rate",
+    description: "Comunidad activa, experiencia estable, eventos únicos y soporte multilingüe. Proyecto educativo basado en AzerothCore.",
     type: "website",
     locale: "es_ES",
     siteName: "SHADOW AZEROTH",
@@ -31,8 +31,8 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "SHADOW AZEROTH - Servidor Educativo WoW 3.3.5a",
-    description: "Servidor privado no afiliado. Educativo y blizzlike. Únete a Rasganorte.",
+    title: "Shadow Azeroth - Servidor WoW 3.3.5a WotLK High Rate",
+    description: "Únete a la mejor comunidad de WotLK. Proyecto educativo, experiencia estable, eventos únicos.",
     creator: "@shadowazeroth",
   },
 };
@@ -43,11 +43,17 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="es">
+    <html lang="es" suppressHydrationWarning>
+      <head>
+        <link rel="icon" href="/icon.png" />
+        <script dangerouslySetInnerHTML={{ __html: `var whTooltips = { colorLinks: true, iconizeLinks: true, renameLinks: true };` }} />
+        <script src="https://wow.zamimg.com/js/tooltips.js" async></script>
+      </head>
       <body
+        suppressHydrationWarning
         className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen flex flex-col`}
       >
-        <Header />
+        <ClientHeader />
         <main className="flex-grow overflow-hidden w-full max-w-full">
           {children}
         </main>

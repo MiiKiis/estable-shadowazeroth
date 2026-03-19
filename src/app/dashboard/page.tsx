@@ -1,4 +1,16 @@
 'use client';
+// Precio para desbloquear cambio libre de avatar
+const AVATAR_UNLOCK_VP = 30;
+const AVATAR_UNLOCK_DP = 1;
+const GM_AVATARS = [
+  '3Adams.gif',
+  'enoyls.gif',
+  'mumper.gif',
+  'nyeriah.gif',
+  'shivan.gif',
+  'ulvareth.gif',
+  'zarhym.gif'
+];
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -28,10 +40,10 @@ const classIconMap: Record<number, string> = {
   3: '/clases/hunter.png',
   4: '/clases/rogue.png',
   5: '/clases/priest.png',
-  6: '/clases/death%20Knight.png',
+  6: '/clases/deathknight.png',
   7: '/clases/shaman.png',
-  8: '/clases/Magician.png',
-  9: '/clases/Witcher.png',
+  8: '/clases/mage.png',
+  9: '/clases/warlock.png',
   11: '/clases/druid.png'
 };
 
@@ -61,7 +73,26 @@ type PurchaseHistoryRow = {
   created_at: string;
 };
 
+// Precio para desbloquear cambio libre de avatar
+
+// Lista de avatares exclusivos para rango 3 (GM)
+// ...existing code...
+
 export default function Dashboard() {
+    // Handler for avatar unlock button
+    const handleUnlockAvatar = (currency: 'vp' | 'dp') => {
+      handleUnlockConfirm(currency);
+    };
+  const [unlockCurrency, setUnlockCurrency] = useState<'vp' | 'dp' | null>(null);
+  const [showUnlockConfirm, setShowUnlockConfirm] = useState(false);
+
+  // Handler to trigger unlock confirmation modal
+  const handleUnlockConfirm = (currency: 'vp' | 'dp') => {
+    setUnlockCurrency(currency);
+    setShowUnlockConfirm(true);
+  };
+      const [avatarUnlocked, setAvatarUnlocked] = useState(false);
+    const [globalError, setGlobalError] = useState<string | null>(null);
   const router = useRouter();
   const [user, setUser] = useState<DashboardUser | null>(null);
   const [characters, setCharacters] = useState<DashboardCharacter[]>([]);
@@ -90,10 +121,23 @@ export default function Dashboard() {
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [passwordError, setPasswordError] = useState('');
   const [passwordSuccess, setPasswordSuccess] = useState('');
+  const [pointsData, setPointsData] = useState<{ vp: number; dp: number; gmlevel?: number } | null>(null);
 
   const getClassIconSrc = (classId: number) => classIconMap[classId] || '/clases/warrior.png';
 
   useEffect(() => {
+            // Detectar si el usuario ya hizo el primer cambio gratis
+            if (avatarEditableAlways && !avatarUnlocked) {
+              setAvatarUnlocked(true);
+            }
+        // Captura errores globales del cliente
+        const handleGlobalError = (event: ErrorEvent) => {
+          setGlobalError('Ocurrió un error inesperado en la aplicación. Por favor recarga la página o revisa la consola.');
+        };
+        window.addEventListener('error', handleGlobalError);
+        return () => {
+          window.removeEventListener('error', handleGlobalError);
+        };
     if (!isAvatarModalOpen) {
       return;
     }
@@ -131,7 +175,13 @@ export default function Dashboard() {
 
         const charactersData = await charactersRes.json();
         const avatarData = await avatarRes.json();
-        const pointsData = await pointsRes.json();
+        const pointsJson = await pointsRes.json();
+        setCharacters(charactersData);
+        setAvatar(avatarData.avatar || null);
+        setAvatarOptions(Array.isArray(avatarData.options) ? avatarData.options : []);
+        setAvatarEditableAlways(!!avatarData.editableAlways);
+        setAvatarChangeCostDp(Number(avatarData.changeCostDp || 1));
+        setPointsData(pointsJson);
 
         if (charactersData.characters) {
           setCharacters(charactersData.characters);
@@ -143,7 +193,7 @@ export default function Dashboard() {
         setAvatarEditableAlways(!!avatarData.editableAlways);
         setAvatarChangeCostDp(Number(avatarData.changeCostDp || 1));
 
-        const gmlevel = Number(pointsData?.gmlevel || 0);
+        const gmlevel = Number(pointsJson?.gmlevel || 0);
         setAccountRole(gmlevel > 0 ? 'GM' : 'ADALID');
       } catch (err) {
         console.error('Error fetching dashboard data:', err);
@@ -288,6 +338,12 @@ export default function Dashboard() {
   const rightColumnAvatars = visibleAvatars.slice(midpoint);
 
   const saveAvatarSelection = async () => {
+        // Si es el primer cambio, no requiere pago
+        if (!avatarUnlocked) {
+          setAvatarUnlocked(true);
+          // ...existing code...
+          return;
+        }
     if (!user || !avatarSelection || savingAvatar || !canEditAvatar) {
       return;
     }
@@ -320,6 +376,13 @@ export default function Dashboard() {
   };
 
   if (!user || loading) {
+        if (globalError) {
+          return (
+            <div className="min-h-screen flex items-center justify-center bg-black text-red-400 text-xl font-bold">
+              {globalError}
+            </div>
+          );
+        }
     return (
       <div 
         className="min-h-screen flex items-center justify-center relative overflow-x-hidden"
@@ -419,6 +482,8 @@ export default function Dashboard() {
                 <p className="text-[9px] uppercase tracking-[0.18em] text-gray-500 font-bold">
                   {avatarEditableAlways ? 'Cuenta especial: cambio libre de avatar' : `Cambiar avatar cuesta ${avatarChangeCostDp} credito`}
                 </p>
+
+                {/* El primer cambio es gratis, después muestra opciones en el modal */}
               </div>
               
               <div className="space-y-4 pt-4 border-t border-purple-900/10">
@@ -579,7 +644,7 @@ export default function Dashboard() {
               )}
 
               {showApplyConfirm && avatarSelection && (
-                <div className="mb-4 rounded-xl border border-cyan-200/25 bg-cyan-500/10 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div className="mb-4 rounded-xl border border-cyan-200/25 bg-cyan-500/10 px-4 py-3 flex flex-col gap-3">
                   <div className="flex items-center gap-2 text-sm text-cyan-100 font-semibold">
                     <Check className="w-5 h-5" />
                     <span>¿Quieres aplicar este avatar?</span>
@@ -592,22 +657,95 @@ export default function Dashboard() {
                     >
                       No
                     </button>
-                    <button
-                      type="button"
-                      onClick={saveAvatarSelection}
-                      disabled={savingAvatar || !canEditAvatar}
-                      className="h-10 min-w-[140px] px-4 rounded-xl border border-cyan-200/40 bg-cyan-400/20 text-cyan-100 hover:bg-cyan-400/30 text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
-                    >
-                      {savingAvatar ? 'Guardando...' : 'Sí, aplicar'}
-                    </button>
+                    {/* Si es el primer cambio, solo muestra aplicar */}
+                    {!avatarUnlocked ? (
+                      <button
+                        type="button"
+                        onClick={saveAvatarSelection}
+                        disabled={savingAvatar || !canEditAvatar}
+                        className="h-10 min-w-[140px] px-4 rounded-xl border border-cyan-200/40 bg-cyan-400/20 text-cyan-100 hover:bg-cyan-400/30 text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
+                      >
+                        {savingAvatar ? 'Guardando...' : 'Sí, aplicar (gratis)'}
+                      </button>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          className="px-4 py-2 rounded-lg bg-gradient-to-r from-cyan-400 to-blue-700 text-white font-bold shadow-md hover:bg-cyan-500 transition-all"
+                          onClick={() => handleUnlockAvatar('vp')}
+                          disabled={!pointsData || pointsData.vp < AVATAR_UNLOCK_VP || savingAvatar}
+                        >
+                          Usar 30 VP (tiempo de juego)
+                        </button>
+                        <button
+                          type="button"
+                          className="px-4 py-2 rounded-lg bg-gradient-to-r from-yellow-400 to-purple-700 text-black font-bold shadow-md hover:bg-yellow-500 transition-all"
+                          onClick={() => handleUnlockAvatar('dp')}
+                          disabled={!pointsData || pointsData.dp < AVATAR_UNLOCK_DP || savingAvatar}
+                        >
+                          Usar 1 DP (Miikii Coins)
+                        </button>
+                      </>
+                    )}
+                                  <div className="mb-4 rounded-xl border border-amber-200/25 bg-amber-500/10 px-4 py-3 flex flex-col gap-3">
+                                    <div className="flex items-center gap-2 text-sm text-amber-100 font-semibold">
+                                      <Check className="w-5 h-5" />
+                                      <span>
+                                        ¿Seguro que quieres desbloquear el cambio libre de avatar usando {unlockCurrency === 'vp' ? '30 VP (tiempo de juego)' : '1 DP (Miikii Coins)'}?
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => setShowUnlockConfirm(false)}
+                                        className="h-10 min-w-[90px] px-4 rounded-xl border border-white/20 bg-white/10 text-white hover:bg-white/15 text-sm font-semibold"
+                                      >
+                                        No
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={async () => {
+                                          setShowUnlockConfirm(false);
+                                          if (!user || !unlockCurrency || savingAvatar) return;
+                                          setSavingAvatar(true);
+                                          try {
+                                            const response = await fetch(`/api/account/unlock-avatar`, {
+                                              method: 'POST',
+                                              headers: { 'Content-Type': 'application/json' },
+                                              body: JSON.stringify({ accountId: user.id, currency: unlockCurrency }),
+                                            });
+                                            const data = await response.json();
+                                            if (!response.ok) {
+                                              setAvatarModalError(data.error || 'Error al desbloquear avatar');
+                                              return;
+                                            }
+                                            setAvatarUnlocked(true);
+                                            // Actualiza el saldo inmediatamente
+                                            setPointsData((prev) => prev ? { ...prev, [unlockCurrency]: prev[unlockCurrency] - (unlockCurrency === 'dp' ? AVATAR_UNLOCK_DP : AVATAR_UNLOCK_VP) } : prev);
+                                          } catch (error) {
+                                            setAvatarModalError('Error al desbloquear avatar');
+                                          } finally {
+                                            setSavingAvatar(false);
+                                          }
+                                        }}
+                                        disabled={savingAvatar || !pointsData || pointsData[unlockCurrency || 'dp'] < (unlockCurrency === 'dp' ? AVATAR_UNLOCK_DP : AVATAR_UNLOCK_VP)}
+                                        className="h-10 min-w-[140px] px-4 rounded-xl border border-amber-200/40 bg-amber-400/20 text-amber-100 hover:bg-amber-400/30 text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
+                                      >
+                                        Sí, desbloquear
+                                      </button>
+                                    </div>
+                                  </div>
                   </div>
+                  {avatarUnlocked && (
+                    <p className="text-xs text-gray-400 mt-2">Elige la moneda que prefieres gastar. VP se gana por tiempo de juego, DP se obtiene por donaciones.</p>
+                  )}
                 </div>
               )}
 
               <div className="rounded-2xl border border-white/15 bg-black/30 p-3 sm:p-4 mb-4 overflow-hidden">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                   <div className="space-y-3">
-                    {leftColumnAvatars.map((avatarFile) => {
+                    {leftColumnAvatars.filter(avatarFile => !GM_AVATARS.includes(avatarFile) || accountRole === 'GM').map((avatarFile) => {
                       const isSelected = avatarSelection === avatarFile;
                       const isDisabled = savingAvatar;
 
@@ -632,7 +770,7 @@ export default function Dashboard() {
                   </div>
 
                   <div className="space-y-3">
-                    {rightColumnAvatars.map((avatarFile) => {
+                    {rightColumnAvatars.filter(avatarFile => !GM_AVATARS.includes(avatarFile) || accountRole === 'GM').map((avatarFile) => {
                       const isSelected = avatarSelection === avatarFile;
                       const isDisabled = savingAvatar;
 
@@ -736,15 +874,22 @@ export default function Dashboard() {
                   </div>
                   <div>
                     {purchaseHistory.map((purchase) => (
-                      <div key={purchase.id} className="grid grid-cols-[90px_1fr_120px_140px] items-center px-4 py-3 border-t border-white/10 text-sm text-slate-200">
+                      <a 
+                        key={purchase.id}
+                        href={purchase.item_id ? `https://www.wowhead.com/wotlk/item=${purchase.item_id}` : '#'}
+                        data-wowhead={purchase.item_id ? `item=${purchase.item_id}&domain=wotlk` : ''}
+                        target="_blank"
+                        rel="noopener"
+                        className="grid grid-cols-[90px_1fr_120px_140px] items-center px-4 py-3 border-t border-white/10 text-sm text-slate-200 hover:bg-white/5 transition-colors group"
+                      >
                         <span className="text-xs font-black text-cyan-300">#{purchase.item_id}</span>
                         <div className="min-w-0">
-                          <p className="font-semibold truncate">{purchase.item_name || 'Item sin nombre'}</p>
+                          <p className="font-semibold truncate group-hover:text-cyan-300 transition-colors">{purchase.item_name || 'Item sin nombre'}</p>
                           <p className="text-[11px] text-slate-400">{purchase.character_name || 'Sin personaje'}{purchase.is_gift ? ' • Regalo' : ''}</p>
                         </div>
                         <span className="text-right font-bold text-amber-300">{purchase.price} {purchase.currency.toUpperCase()}</span>
                         <span className="text-right text-xs text-slate-400">{formatPurchaseDate(purchase.created_at)}</span>
-                      </div>
+                      </a>
                     ))}
                   </div>
                 </div>

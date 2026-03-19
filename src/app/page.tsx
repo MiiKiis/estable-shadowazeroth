@@ -1,168 +1,121 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { LogIn, UserPlus, Shield, Radio } from 'lucide-react';
 import StatCards from '@/components/StatCards';
 
-const MIN_USERNAME_LENGTH = 3;
-const MAX_USERNAME_LENGTH = 16;
-const FORUM_USERNAME_REGEX = /^[a-zA-Z0-9]+$/;
 
-function isValidForumUsername(username: string): boolean {
-  return (
-    username.length >= MIN_USERNAME_LENGTH &&
-    username.length <= MAX_USERNAME_LENGTH &&
-    FORUM_USERNAME_REGEX.test(username)
-  );
-}
-
-export default function Home() {
-  const router = useRouter();
-  const formRef = useRef<HTMLFormElement>(null);
-  const [isLogin, setIsLogin] = useState(true);
-  const [faction, setFaction] = useState<'horde' | 'alliance' | null>(null);
-  const [formData, setFormData] = useState({
-    email: '',
-    username: '',
-    password: '',
-    confirmPassword: '',
-    pin: '',
-  });
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-
-  const hordeColor = {
-    border: 'border-red-700',
-    bg: 'bg-red-900/10',
-    button: 'from-red-700 to-red-600 hover:from-red-600 hover:to-red-500',
-    text: 'text-red-500',
-    accent: 'text-red-400',
-  };
-
-  const allianceColor = {
-    border: 'border-blue-700',
-    bg: 'bg-blue-900/10',
-    button: 'from-blue-700 to-blue-600 hover:from-blue-600 hover:to-blue-500',
-    text: 'text-blue-500',
-    accent: 'text-blue-400',
-  };
-
-  const currentColor = faction === 'horde' ? hordeColor : faction === 'alliance' ? allianceColor : hordeColor;
-  const usernameForValidation = formData.username.trim();
-  const usernameIsValid = isValidForumUsername(usernameForValidation);
-
-  useEffect(() => {
-    const storedUser = localStorage.getItem('user');
-    if (storedUser) {
-      router.push('/dashboard');
-    }
-  }, [router]);
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value,
-    });
-    setError('');
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
-
-    if (!formData.username.trim()) {
-      setError('El nombre de usuario es requerido');
-      setLoading(false);
-      return;
-    }
-
-    if (!formData.password.trim()) {
-      setError('La contraseña es requerida');
-      setLoading(false);
-      return;
-    }
-
-    if (!isLogin && !formData.email.trim()) {
-      setError('El correo electronico es requerido');
-      setLoading(false);
-      return;
-    }
-
-    if (!isLogin && !usernameIsValid) {
-      setError('El usuario debe tener 3-16 caracteres y solo letras o numeros (sin espacios ni simbolos).');
-      setLoading(false);
-      return;
-    }
-
-    if (!isLogin && formData.password !== formData.confirmPassword) {
-      setError('Las contraseñas no coinciden');
-      setLoading(false);
-      return;
-    }
-
-    if (!isLogin && !/^\d{4}$/.test(formData.pin.trim())) {
-      setError('Debes ingresar un PIN de 4 digitos');
-      setLoading(false);
-      return;
-    }
-
-    if (!isLogin && !faction) {
-      setError('Debes seleccionar una facción');
-      setLoading(false);
-      return;
-    }
-
-    try {
-      const endpoint = isLogin ? '/api/login' : '/api/register';
-      const body = isLogin 
-        ? { username: formData.username, password: formData.password }
-        : {
-            email: formData.email,
-            username: formData.username,
-            password: formData.password,
-            pin: formData.pin,
-          };
-
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || data.message || 'Error en la autenticación');
+  export default function Home() {
+      // Username validation utility
+      function isValidForumUsername(username: string) {
+        return /^[a-zA-Z0-9]{3,16}$/.test(username);
       }
 
-      if (!isLogin) {
-        // Register successful
-        setError('');
-        setFormData({ email: '', username: '', password: '', confirmPassword: '', pin: '' });
-        setIsLogin(true);
-        setError('Cuenta creada! Ahora inicia sesión');
+      // Username validation state for UI feedback
+      const [usernameForValidation, setUsernameForValidation] = useState('');
+      const usernameIsValid = isValidForumUsername(usernameForValidation);
+
+    const router = useRouter();
+    const formRef = useRef<HTMLFormElement>(null);
+    const [isLogin, setIsLogin] = useState(true);
+
+    // Handle input changes for form fields
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const { name, value } = e.target;
+      setFormData(prev => ({ ...prev, [name]: value }));
+      if (name === 'username') setUsernameForValidation(value);
+    };
+    const [faction, setFaction] = useState<'horde' | 'alliance' | null>(null);
+    const [formData, setFormData] = useState({
+      email: '',
+      username: '',
+      password: '',
+      confirmPassword: '',
+      pin: '',
+    });
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+
+    // Validación y submit de login/registro
+    const handleSubmit = async (e: React.FormEvent) => {
+      e.preventDefault();
+      setError('');
+      setLoading(true);
+
+      if (!isLogin && !formData.email.trim()) {
+        setError('El correo electronico es requerido');
+        setLoading(false);
         return;
       }
 
-      // Login successful
-      localStorage.setItem('user', JSON.stringify({
-        id: data.user?.id,
-        username: data.user?.username,
-      }));
+      if (!isLogin && !isValidForumUsername(formData.username)) {
+        setError('El usuario debe tener 3-16 caracteres y solo letras o numeros (sin espacios ni simbolos).');
+        setLoading(false);
+        return;
+      }
 
-      setTimeout(() => {
-        router.push('/dashboard');
-      }, 500);
+      if (!isLogin && formData.password !== formData.confirmPassword) {
+        setError('Las contraseñas no coinciden');
+        setLoading(false);
+        return;
+      }
 
-    } catch (err: any) {
-      setError(err.message || 'Error desconocido');
-    } finally {
-      setLoading(false);
-    }
-  };
+      if (!isLogin && !/^[0-9]{4}$/.test(formData.pin.trim())) {
+        setError('Debes ingresar un PIN de 4 digitos');
+        setLoading(false);
+        return;
+      }
+
+      if (!isLogin && !faction) {
+        setError('Debes seleccionar una facción');
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const endpoint = isLogin ? '/api/login' : '/api/register';
+        const body = isLogin
+          ? { username: formData.username, password: formData.password }
+          : {
+              email: formData.email,
+              username: formData.username,
+              password: formData.password,
+              pin: formData.pin,
+            };
+
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(data.error || data.message || 'Error en la autenticación');
+        }
+
+        if (!isLogin) {
+          setError('');
+          setFormData({ email: '', username: '', password: '', confirmPassword: '', pin: '' });
+          setIsLogin(true);
+          setError('Cuenta creada! Ahora inicia sesión');
+        } else {
+          localStorage.setItem('user', JSON.stringify({
+            id: data.user?.id,
+            username: data.user?.username,
+          }));
+          setTimeout(() => {
+            router.push('/dashboard');
+          }, 500);
+        }
+      } catch (err: any) {
+        setError(err.message || 'Error desconocido');
+      } finally {
+        setLoading(false);
+      }
+    };
 
   return (
     <main className="relative min-h-screen overflow-x-hidden pt-28 sm:pt-32 pb-14 text-slate-100">
@@ -178,9 +131,22 @@ export default function Home() {
               <span className="block">POR AZEROTH</span>
             </h1>
             <p className="mt-5 max-w-xl text-xl text-slate-200/95 leading-snug drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)]">
-              Vive WotLK 3.3.5a con estética clásica, progreso real y comunidad activa.
+              Forja tu destino en IronBlood
             </p>
-
+            <div className="mt-6 max-w-xl space-y-2 text-lg text-slate-200/95 leading-snug drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)]">
+             <p className="flex items-center gap-2">
+             <span className="text-amber-400 font-bold">⚡ Rates Leveo:</span> <span>x8</span>
+             </p>
+             <p className="flex items-center gap-2">
+             <span className="text-emerald-400 font-bold">🛠️ Profesiones:</span> <span>x2 <small className="text-xs italic opacity-80">(Temporal)</small></span>
+             </p>
+            <p className="flex items-center gap-2">
+    <span className="text-purple-400 font-bold">💎 Drop:</span> <span>Mítico x1 / grises y verde x 3</span>
+  </p>
+  <p className="mt-4 font-semibold text-white pt-2 border-t border-white/10 italic">
+    ¡Regístrate ahora y reclama tu legado!
+  </p>
+</div>
             <div className="mt-10 rounded-2xl border border-cyan-200/35 bg-gradient-to-r from-cyan-950/80 via-slate-900/85 to-indigo-950/80 backdrop-blur-sm p-4 sm:p-5 max-w-2xl shadow-[0_14px_35px_rgba(0,0,0,0.45)]">
               <h3 className="text-xl font-black uppercase tracking-wide text-white mb-4">Estadísticas del Realm</h3>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

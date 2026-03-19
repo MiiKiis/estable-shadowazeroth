@@ -30,28 +30,31 @@ async function getConnection() {
  */
 export async function getTableData<T>(
   table: string,
-  conditions?: { [key: string]: unknown },
+  conditions?: { [key: string]: string | number | boolean | null },
   limit?: number
 ): Promise<T[]> {
   const connection = await getConnection();
 
   try {
     let query = `SELECT * FROM \`${table}\``;
-    const params: unknown[] = [];
+    const params: (string | number | boolean | null)[] = [];
 
     if (conditions && Object.keys(conditions).length > 0) {
       const whereClause = Object.keys(conditions)
         .map((key) => `\`${key}\` = ?`)
         .join(' AND ');
       query += ` WHERE ${whereClause}`;
-      params.push(...Object.values(conditions));
+      params.push(...(Object.values(conditions) as (string | number | boolean | null)[]));
     }
 
     if (limit) {
       query += ` LIMIT ${limit}`;
     }
 
-    const [rows] = await connection.execute(query, params);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const conn = connection as any;
+    const rows: mysql.RowDataPacket[] = (await conn.query(query, params))[0];
+
     return rows as T[];
   } catch (error) {
     console.error(`Error obteniendo datos de ${table}:`, error);

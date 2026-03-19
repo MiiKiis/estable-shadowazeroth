@@ -10,9 +10,9 @@ const DONATIONS = [
   { amount: 1, points: 1, bonus: 0, badge: null, highlight: false, plan: 'Inicial' },
   { amount: 5, points: 5, bonus: 0, badge: null, highlight: false, plan: 'Base' },
   { amount: 10, points: 10, bonus: 0, badge: 'RECOMENDADO', highlight: true, plan: 'Recomendado' },
-  { amount: 20, points: 21, bonus: 5, badge: null, highlight: false, plan: 'Miikii Coins' },
-  { amount: 30, points: 33, bonus: 10, badge: null, highlight: false, plan: 'Miikii Coins' },
-  { amount: 50, points: 57, bonus: 14, badge: 'MEJOR VALOR', highlight: true, plan: 'Miikii Coins' },
+  { amount: 20, points: 20, bonus: 0, badge: null, highlight: false, plan: 'Créditos' },
+  { amount: 30, points: 30, bonus: 0, badge: null, highlight: false, plan: 'Créditos' },
+  { amount: 50, points: 50, bonus: 0, badge: 'MEJOR VALOR', highlight: true, plan: 'Créditos' },
 ].map(item => ({
   ...item,
   valuePerPoint: (item.amount / item.points).toFixed(2)
@@ -22,13 +22,14 @@ const MAX_CREDITS_PER_DOLLAR = Math.max(...DONATIONS.map(item => item.points / i
 
 const SHOP_CATEGORIES = [
   { id: 'all', label: 'TODOS' },
-  { id: 'pve', label: 'PvE'   },
+  { id: 'pve', label: 'PvE (Tiers)'   },
   { id: 'pvp', label: 'PvP'   },
-  { id: 'transmog', label: 'TRANSFIGURACION' },
   { id: 'profesiones', label: 'PROFESIONES' },
-  { id: 'monturas', label: 'MONTURAS' },
-  { id: 'consumibles', label: 'CONSUMIBLES' },
-  { id: 'tabardos', label: 'TABARDOS' },
+  { id: 'monturas', label: 'MONTURAS Y MASCOTAS' },
+  { id: 'transmo', label: 'TRANSFIGURACIÓN' },
+  { id: 'oro', label: 'ORO' },
+  { id: 'boost', label: 'SUBIDA DE NIVEL' },
+  { id: 'misc', label: 'OTROS' },
 ];
 
 const PROFESSIONS = [
@@ -99,7 +100,7 @@ type ShopItem = {
 
 export default function DonatePage() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<'donate' | 'rewards'>('donate');
+  // Elimina tabs, muestra ambos apartados siempre
   const [showCheckout, setShowCheckout] = useState(false);
   const [selectedDonation, setSelectedDonation] = useState<(typeof DONATIONS)[number] | null>(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -127,59 +128,38 @@ export default function DonatePage() {
   const [purchaseError, setPurchaseError] = useState<string>('');
   const [purchasingItemId, setPurchasingItemId] = useState<number | null>(null);
   const [creatingCryptoInvoice, setCreatingCryptoInvoice] = useState(false);
+  // Definir activeTab para evitar error
+  const [activeTab, setActiveTab] = useState<'rewards' | 'donations'>('rewards');
+  const [targetAccountId, setTargetAccountId] = useState<string>('');
 
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
     if (!storedUser) {
-      router.push('/');
+      setCheckingAuth(false);
       return;
     }
-    const parsedUser = JSON.parse(storedUser);
-    setUser(parsedUser);
-    setIsLoggedIn(true);
-    setCheckingAuth(false);
-
-    const loadCharacters = async () => {
-      try {
-        const response = await fetch(`/api/characters?accountId=${parsedUser.id}`);
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(data.error || 'No se pudieron cargar los personajes');
-        }
-
-        const loadedCharacters = data.characters || [];
-        setCharacters(loadedCharacters);
-        if (loadedCharacters[0]?.guid) {
-          setSelectedCharacterGuid(String(loadedCharacters[0].guid));
-        }
-      } catch (error) {
-        console.error('Error loading characters for store:', error);
-      }
-    };
-
-    const loadShopItems = async () => {
-      try {
-        const response = await fetch('/api/shop/items', { cache: 'no-store' });
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(data.error || 'No se pudieron cargar los items');
-        }
-
-        if (Array.isArray(data.items)) {
-          setShopItems(data.items);
-        } else {
-          setShopItems([]);
-        }
-      } catch (error) {
-        console.error('Error loading shop items:', error);
-        setShopItems([]);
-      }
-    };
-
-    loadCharacters();
-    loadShopItems();
+    try {
+      const parsedUser = JSON.parse(storedUser);
+      setUser(parsedUser);
+      // Cargar personajes
+      fetch(`/api/characters?accountId=${parsedUser.id}`)
+        .then(res => res.json())
+        .then(data => {
+          setCharacters(data.characters || []);
+        });
+      // Cargar items de la tienda
+      fetch(`/api/shop/items`)
+        .then(res => res.json())
+        .then(data => {
+          setShopItems(data.items || []);
+        });
+    } catch (e) {
+      setUser(null);
+      setCharacters([]);
+      setShopItems([]);
+    } finally {
+      setCheckingAuth(false);
+    }
   }, [router]);
 
   const handlePurchase = async (itemId: number) => {
@@ -215,6 +195,7 @@ export default function DonatePage() {
           characterGuid: targetGuid,
           isGift,
           pin: isGift ? giftPin.trim() : undefined,
+          targetAccountId: targetAccountId.trim() ? Number(targetAccountId) : undefined,
         }),
       });
 
@@ -294,27 +275,17 @@ export default function DonatePage() {
   };
 
   const filteredShopItems = shopItems.filter(item => {
-    const itemCategory = (item.category || 'transmog') === 'misc' ? 'transmog' : (item.category || 'transmog');
+    const itemCat = item.category || 'misc';
 
-    if (shopCategory !== 'all' && itemCategory !== shopCategory) return false;
+    if (shopCategory !== 'all' && itemCat !== shopCategory) return false;
 
-    if (shopCategory === 'pve' && shopTier !== 0 && (item.tier ?? 0) !== shopTier) return false;
-
-    if (shopCategory === 'pve' && shopTier === 9 && tier9FactionFilter !== 'all') {
-      if ((item.faction || 'horda') !== tier9FactionFilter) return false;
-    }
-
-    if (shopCategory === 'transmog') {
-      if (transmogTypeFilter !== 'all' && (item.transmog_type || 'arma') !== transmogTypeFilter) return false;
-      if (transmogLevelFilter !== 0 && (item.transmog_level ?? 70) !== transmogLevelFilter) return false;
-    }
-
-    if (shopCategory === 'profesiones' && professionFilter !== 'all') {
-      if ((item.profession || '').toLowerCase() !== professionFilter.toLowerCase()) return false;
-    }
-
-    if (shopCategory === 'monturas' && mountFactionFilter !== 'all') {
-      if ((item.faction || 'horda') !== mountFactionFilter) return false;
+    // We reuse `shopTier` as a universal sub-filter parameter for ease of state management
+    if (shopTier !== 0) {
+      if (shopCategory === 'pve' && (item.tier ?? 0) !== shopTier) return false;
+      if (shopCategory === 'monturas' && (item.tier ?? 0) !== shopTier) return false;
+      if (shopCategory === 'transmo' && (item.tier ?? 0) !== shopTier) return false;
+      if (shopCategory === 'boost' && (item.tier ?? 0) !== shopTier) return false;
+      if (shopCategory === 'profesiones' && (item.tier ?? 0) !== shopTier) return false;
     }
 
     if (shopClassFilter !== 0) {
@@ -325,6 +296,8 @@ export default function DonatePage() {
     return true;
   });
 
+
+  // Loader robusto para evitar hydration mismatch
   if (checkingAuth) {
     return (
       <main className="min-h-screen flex items-center justify-center bg-black text-white">
@@ -333,6 +306,7 @@ export default function DonatePage() {
     );
   }
 
+  // Renderiza el contenido solo cuando checkingAuth es false
   return (
     <main 
       className="min-h-screen pt-32 pb-20 text-white selection:bg-purple-600/30 font-sans relative overflow-x-hidden"
@@ -351,773 +325,479 @@ export default function DonatePage() {
 
       {/* Dark overlay for readability */}
       <div className="absolute inset-0 bg-black/50 z-0" />
-      
-      <div className="max-w-6xl mx-auto px-6 relative z-10">
-        {/* Tab Buttons */}
-        <div className="flex gap-4 mb-12 justify-center">
-          {isLoggedIn && (
-            <button
-              onClick={() => setActiveTab('donate')}
-              className={`px-8 py-3 font-bold uppercase tracking-wider text-sm transition-all border-2 rounded-sm ${
-                activeTab === 'donate'
-                  ? 'bg-gradient-to-r from-purple-700 to-purple-600 border-purple-600 text-white shadow-[0_0_15px_rgba(168,85,247,0.6)]'
-                  : 'bg-transparent border-purple-900/50 text-gray-400 hover:border-purple-600 hover:text-purple-400'
-              }`}
-            >
-              <CreditCard className="w-4 h-4 inline mr-2" />
-              DONACIONES
-            </button>
-          )}
-          <button
-            onClick={() => setActiveTab('rewards')}
-            className={`px-8 py-3 font-bold uppercase tracking-wider text-sm transition-all border-2 rounded-sm ${
-              activeTab === 'rewards'
-                ? 'bg-gradient-to-r from-purple-700 to-purple-600 border-purple-600 text-white shadow-[0_0_15px_rgba(168,85,247,0.6)]'
-                : 'bg-transparent border-purple-900/50 text-gray-400 hover:border-purple-600 hover:text-purple-400'
-            }`}
-          >
-            <Gift className="w-4 h-4 inline mr-2" />
-            RECOMPENSAS
-          </button>
-        </div>
 
-        {/* Not Logged In Message */}
-        {!isLoggedIn && activeTab === 'donate' && (
-          <div className="text-center mb-12 p-8 bg-purple-900/30 border border-purple-600/50 rounded-lg">
-            <h2 className="text-2xl font-black text-white mb-4">Inicia sesión para donar</h2>
-            <p className="text-gray-400 mb-6">Necesitas estar conectado con tu cuenta para acceder a la sección de donaciones.</p>
-            <button className="px-6 py-3 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-lg transition-all">
-              🔐 Iniciar sesión
-            </button>
+      {/* ========== TAB BAR ========== */}
+      <div className="max-w-6xl mx-auto px-6 relative z-10 pt-10">
+      <div className="flex gap-2 mb-8 border-b border-purple-700/40">
+        <button
+          onClick={() => setActiveTab('donations')}
+          className={`px-8 py-3 font-bold text-lg rounded-t-xl transition-all border-b-2 ${activeTab === 'donations' ? 'border-purple-500 text-purple-300 bg-purple-900/30' : 'border-transparent text-gray-400 hover:text-purple-300'}`}
+        >
+          <Gift className="inline w-5 h-5 mr-2 -mt-1" />Donaciones
+        </button>
+        <button
+          onClick={() => setActiveTab('rewards')}
+          className={`px-8 py-3 font-bold text-lg rounded-t-xl transition-all border-b-2 ${activeTab === 'rewards' ? 'border-purple-500 text-purple-300 bg-purple-900/30' : 'border-transparent text-gray-400 hover:text-purple-300'}`}
+        >
+          <Sparkles className="inline w-5 h-5 mr-2 -mt-1" />Recompensas
+        </button>
+      </div>
+
+      {/* ===== TAB: DONACIONES ===== */}
+      {activeTab === 'donations' && (
+        <section className="mb-12">
+          <h2 className="text-4xl font-black mb-6">Precios y paquetes de donación</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-8 mb-10">
+            {DONATIONS.map((don, idx) => (
+              <div key={idx} className="p-7 rounded-xl bg-black/40 border border-purple-400/30 flex flex-col items-center shadow-lg">
+                <img src="/coin.png" alt="Coin" className="w-14 h-14 mb-3 drop-shadow-[0_0_15px_rgba(168,85,247,0.8)]" />
+                <div className="font-black text-2xl mb-2">{don.amount} USD</div>
+                <div className="text-yellow-400 font-black text-xl mb-1">{don.points} Créditos</div>
+                {don.bonus > 0 && <div className="text-green-400 font-bold mb-1">+{don.bonus}% Bonus</div>}
+                <div className="text-gray-400 text-sm mb-2">{don.plan}</div>
+                {don.badge && <div className="text-purple-300 font-bold text-xs uppercase bg-purple-900/30 px-3 py-1 rounded-lg mb-2">{don.badge}</div>}
+                <button
+                  className="mt-4 bg-purple-600 hover:bg-purple-700 text-white font-bold px-6 py-3 rounded-lg transition-all"
+                  onClick={() => { setSelectedDonation(don); setShowCheckout(true); }}
+                >Donar</button>
+              </div>
+            ))}
           </div>
-        )}
+        </section>
+      )}
 
-        {/* DONACIONES TAB */}
-        {isLoggedIn && activeTab === 'donate' && (
-          <div className="text-center">
-            <div className="flex flex-col items-center gap-2 mb-6">
-              <CreditCard className="w-12 h-12 text-purple-500 animate-pulse bg-purple-950/20 p-3 rounded-full border border-purple-900/40" />
-              <h1 className="text-5xl font-black italic tracking-tighter text-white drop-shadow-[0_0_30px_rgba(168,85,247,0.5)] uppercase">Apoya al Servidor</h1>
-              <p className="text-base text-gray-400 mt-2 leading-relaxed font-light max-w-xl">Tus donaciones mantienen los servidores estables sin lag</p>
+      {/* ===== TAB: RECOMPENSAS / TIENDA ===== */}
+      {activeTab === 'rewards' && (
+        <section className="mb-12">
+          <div className="flex items-center gap-3 mb-6">
+            <Sparkles className="w-8 h-8 text-purple-400" />
+            <h2 className="text-4xl font-black">Tienda de Recompensas</h2>
+          </div>
+
+          {!user ? (
+            <div className="bg-purple-900/20 border border-purple-600/40 rounded-2xl p-10 text-center">
+              <Shield className="w-16 h-16 text-purple-400 mx-auto mb-4" />
+              <p className="text-gray-300 text-lg mb-4">Inicia sesión para ver y comprar recompensas con tus créditos.</p>
+              <button
+                onClick={() => router.push('/')}
+                className="bg-purple-600 hover:bg-purple-700 text-white font-bold px-8 py-3 rounded-xl transition-all"
+              >Iniciar sesión</button>
             </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-6 max-w-6xl mx-auto">
-          {DONATIONS.map((item, i) => {
-            const isInsta80Pack = item.amount === 10;
-
-            return (
-            <div key={i} className="relative group transition-all duration-300">
-              <div className="relative p-6 rounded-lg backdrop-blur-md transition-all duration-300 h-full flex flex-col overflow-hidden bg-black/70 border border-purple-900/30 hover:border-purple-500/45 shadow-2xl shadow-black/60 border-b-4 border-b-purple-900 hover:border-b-purple-600 hover:bg-black/65 hover:scale-[1.02]">
-                {item.highlight && (
-                  <div className="pointer-events-none absolute inset-0 opacity-90">
-                    <div className="absolute inset-0 bg-gradient-to-br from-cyan-400/20 to-purple-600/30 blur-md" />
-                  </div>
-                )}
-
-                <h2 className="font-black italic uppercase tracking-tighter mb-3 text-center text-3xl text-purple-600 group-hover:text-purple-500">
-                  ${item.amount}
-                </h2>
-                <p className="text-[11px] uppercase tracking-[0.2em] text-white/75 text-center font-black mb-3">{item.plan}</p>
-                
-                {/* COIN GRANDE Y CENTRADA */}
-                <div className="flex justify-center mb-4">
-                  {isInsta80Pack ? (
-                    <div className="relative h-[112px] w-[112px] rounded-full border border-cyan-300/45 bg-gradient-to-b from-cyan-300/20 via-cyan-500/10 to-black/30 shadow-[0_0_30px_rgba(34,211,238,0.5)] overflow-hidden">
-                      <div className="absolute inset-0 bg-gradient-to-b from-white/20 to-white/0" />
-                      <Image
-                        src="/shadow-azeroth.png"
-                        alt="Pack Insta-80"
-                        fill
-                        className="object-cover opacity-65"
-                      />
-                      <div className="absolute inset-0 flex flex-col items-center justify-center">
-                        <Zap className="w-6 h-6 text-cyan-200 drop-shadow-[0_0_10px_rgba(34,211,238,0.8)]" />
-                        <span className="mt-1 text-[10px] font-black tracking-[0.22em] text-cyan-100">INSTA-80</span>
+          ) : (
+            <>
+                {/* Character / Delivery picker */}
+                <div className="bg-black/60 border-2 border-purple-700/50 rounded-2xl p-6 md:p-8 mb-6 shadow-2xl">
+                  {/* Delivery Mode options */}
+                  <div className="flex flex-col md:flex-row gap-6 mb-6 pb-6 border-b border-purple-500/20">
+                    <div className="flex-shrink-0">
+                      <label className="text-gray-400 text-xs uppercase tracking-widest font-bold mb-3 block">Modo de Entrega</label>
+                      <div className="grid grid-cols-2 gap-3 w-full md:w-80">
+                        <button
+                          onClick={() => setDeliveryMode('self')}
+                          className={`flex flex-col items-center justify-center gap-2 p-3 rounded-xl font-bold border-2 transition-all ${deliveryMode === 'self' ? 'bg-purple-900 border-purple-500 text-white shadow-[0_0_15px_rgba(168,85,247,0.4)]' : 'bg-black/40 border-purple-900/40 text-gray-500 hover:text-white hover:border-purple-700'}`}
+                        ><Users className="w-6 h-6" />Para Mí</button>
+                        <button
+                          onClick={() => setDeliveryMode('gift')}
+                          className={`flex flex-col items-center justify-center gap-2 p-3 rounded-xl font-bold border-2 transition-all ${deliveryMode === 'gift' ? 'bg-pink-900 border-pink-500 text-white shadow-[0_0_15px_rgba(236,72,153,0.4)]' : 'bg-black/40 border-purple-900/40 text-gray-500 hover:text-white hover:border-pink-700'}`}
+                        ><Gift className="w-6 h-6" />Regalar</button>
                       </div>
                     </div>
-                  ) : (
-                    <div className="relative transition-transform group-hover:scale-125 h-[110px] w-[110px] rounded-full border border-white/10 overflow-hidden">
-                      <div className="absolute inset-0 bg-gradient-to-b from-white/15 to-white/0" />
-                      <div className="absolute inset-0 blur-xl bg-purple-600/40 rounded-full" />
-                      <Image 
-                        src="/coin.png" 
-                        alt="Coin" 
-                        width={110}
-                        height={110}
-                        className="relative drop-shadow-[0_0_15px_rgba(168,85,247,0.8)]"
-                      />
+
+                    {deliveryMode === 'self' && (
+                      <div className="flex-1">
+                        <label className="text-gray-400 text-xs uppercase tracking-widest font-bold mb-3 block">Tus Personajes</label>
+                        {characters.length > 0 ? (
+                          <select
+                            value={selectedCharacterGuid}
+                            onChange={e => setSelectedCharacterGuid(e.target.value)}
+                            className="w-full bg-[#070a13] border-2 border-purple-700/60 text-white rounded-xl px-5 py-4 font-bold text-lg focus:outline-none focus:border-purple-400 transition-colors shadow-inner"
+                          >
+                            <option value="">-- Selecciona el personaje que recibirá la compra --</option>
+                            {characters.map(c => (
+                              <option key={c.guid} value={c.guid}>{c.name} (Nivel {c.level})</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <div className="w-full bg-red-900/20 border-2 border-red-500/40 text-red-200 rounded-xl px-5 py-4 font-semibold text-center flex items-center justify-center gap-2">
+                             <AlertTriangle className="w-5 h-5 shrink-0" />
+                             <span>No tienes ningún personaje creado en esta cuenta. Entra al juego para crear uno.</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                {/* Account Transfer Field (Global or contextual) */}
+                {deliveryMode === 'self' && shopItems.some(i => i.id === purchasingItemId && i.service_type === 'character_transfer') && (
+                   <div className="bg-orange-950/20 border border-orange-500/30 rounded-2xl p-6 mb-6">
+                     <label className="text-orange-300 font-bold block mb-2">ID de la Cuenta Destino</label>
+                     <input
+                        type="number"
+                        placeholder="Ingresa el ID de la cuenta donde quieres mover el personaje"
+                        value={targetAccountId}
+                        onChange={e => setTargetAccountId(e.target.value)}
+                        className="w-full bg-black/60 border border-orange-500/40 text-white rounded-xl px-4 py-3"
+                     />
+                     <p className="text-xs text-gray-400 mt-2">Asegúrate de que el ID sea correcto, esta acción no se puede deshacer.</p>
+                   </div>
+                )}
+
+                {/* Purchase messages */}
+                  {/* Gift delivery mode inputs */}
+                  {deliveryMode === 'gift' && (
+                    <div className="w-full flex flex-col lg:flex-row gap-8">
+                      {/* Personajes del usuario también disponibles en Regalar para autoregalos entre cuentas? The user said "la búsqueda de todos los personajes de la cuenta y más visible" */}
+                      <div className="flex-1">
+                         <label className="text-pink-400 text-xs uppercase tracking-widest font-bold mb-3 block flex items-center gap-2"><Search className="w-4 h-4"/> Buscar destinatario</label>
+                         <div className="flex gap-3 mb-2">
+                            <input
+                              type="text"
+                              value={giftSearch}
+                              onChange={e => setGiftSearch(e.target.value)}
+                              onKeyDown={e => e.key === 'Enter' && searchGiftCharacter()}
+                              placeholder="Escribe el nombre del personaje..."
+                              className="flex-1 bg-[#070a13] border-2 border-pink-900/40 text-white rounded-xl px-5 py-3 focus:outline-none focus:border-pink-500"
+                            />
+                            <button onClick={searchGiftCharacter} disabled={giftSearching} className="bg-pink-600 hover:bg-pink-500 px-6 py-3 rounded-xl text-white font-black uppercase tracking-wider transition-colors shadow-lg">
+                              Buscar
+                            </button>
+                         </div>
+                         {giftSearchError && <p className="text-red-400 text-sm mb-2">{giftSearchError}</p>}
+                         
+                         {/* Quick pick from user's own characters to gift to their Alts easily */}
+                         {characters.length > 0 && giftResults.length === 0 && !giftCharacter && (
+                            <div className="mt-4 pt-4 border-t border-purple-900/30">
+                              <p className="text-gray-400 text-xs mb-3">O selecciona rápidamente uno de tus personajes:</p>
+                              <div className="flex flex-wrap gap-2">
+                                {characters.map(c => (
+                                  <button key={c.guid} onClick={() => setGiftCharacter(c)} className="bg-purple-900/30 border border-purple-500/20 px-3 py-1.5 rounded-lg text-sm text-purple-200 hover:bg-purple-600 hover:text-white transition-colors">
+                                    {c.name}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                         )}
+
+                         {giftResults.length > 0 && !giftCharacter && (
+                           <div className="mt-4 bg-black/40 p-4 rounded-xl border border-pink-900/50">
+                             <p className="text-white text-sm mb-3 font-semibold">Resultados encontrados:</p>
+                             <div className="flex flex-wrap gap-2">
+                               {giftResults.map(c => (
+                                 <button key={c.guid} onClick={() => setGiftCharacter(c)} className="bg-pink-900/40 border border-pink-500/50 px-4 py-2 rounded-xl text-sm font-bold text-white hover:bg-pink-600 transition-all shadow-md">
+                                   {c.name} <span className="text-pink-300 ml-1">(Nv. {c.level})</span>
+                                 </button>
+                               ))}
+                             </div>
+                           </div>
+                         )}
+
+                         {giftCharacter && (
+                           <div className="mt-4 bg-pink-950/40 border border-pink-500 rounded-xl p-4 flex items-center justify-between shadow-[0_0_20px_rgba(236,72,153,0.2)]">
+                             <div className="flex items-center gap-3">
+                               <Gift className="w-8 h-8 text-pink-400" />
+                               <div>
+                                 <p className="text-gray-400 text-xs uppercase">Destinatario Confirmado</p>
+                                 <p className="text-xl font-black text-white">{giftCharacter.name}</p>
+                               </div>
+                             </div>
+                             <button onClick={() => setGiftCharacter(null)} className="text-pink-400 hover:text-white bg-black/50 p-2 rounded-lg"><X className="w-5 h-5" /></button>
+                           </div>
+                         )}
+                      </div>
+
+                      <div className="w-full lg:w-64">
+                         <label className="text-pink-400 text-xs uppercase tracking-widest font-bold mb-3 block flex items-center gap-2"><Shield className="w-4 h-4"/> Confirmación PIN</label>
+                         <p className="text-xs text-gray-400 mb-3">Ingresa tu PIN de seguridad (4 dígitos) para envolver el regalo.</p>
+                         <input
+                           type="password"
+                           value={giftPin}
+                           onChange={e => setGiftPin(e.target.value.replace(/[^0-9]/g, '').slice(0, 4))}
+                           placeholder="••••"
+                           className="w-full bg-[#070a13] border-2 border-pink-900/40 text-center text-3xl tracking-[1em] h-16 text-white rounded-xl focus:outline-none focus:border-pink-500 font-black"
+                           maxLength={4}
+                         />
+                      </div>
                     </div>
                   )}
                 </div>
 
-                {/* PUNTOS Y INFO */}
-                <div className="text-center mb-5">
-                  <div className="font-black mb-1 text-2xl text-white">
-                    {item.points.toLocaleString()}
-                  </div>
-                  <div className="text-white/70 font-semibold text-xs mb-2">CREDITOS</div>
-                  <div className="bg-purple-900/40 rounded-lg p-2">
-                    <span className="text-xs text-white/80 font-bold">
-                      ${item.valuePerPoint}/credito
-                    </span>
-                  </div>
+              {/* Feedback */}
+              {purchaseMessage && (
+                <div className="flex items-center gap-3 bg-green-900/30 border border-green-500/40 rounded-xl px-6 py-3 mb-4">
+                  <CheckCircle2 className="w-5 h-5 text-green-400" />
+                  <span className="text-green-300 font-semibold">{purchaseMessage}</span>
                 </div>
-                
-                {item.bonus > 0 && (
-                  <div className="font-bold uppercase mb-4 text-center transition-colors py-1.5 rounded border border-cyan-300/35 bg-cyan-400/10 text-cyan-200 text-xs">
-                    <div className="flex items-center justify-center gap-1">
-                      <TrendingUp className="w-3 h-3" />
-                      +{item.bonus}% BONUS
-                    </div>
-                  </div>
-                )}
-
-                {item.highlight && (
-                  <div className="bg-purple-900/40 border border-amber-300/40 rounded-lg p-2.5 mb-4 text-xs text-white/80">
-                    <div className="font-bold text-amber-300 text-[11px] mb-0.5">💰 Mejor valor</div>
-                    <div className="text-[10px] text-white/70">Máximos puntos</div>
-                  </div>
-                )}
-                
-                <button 
-                  onClick={() => {
-                    setSelectedDonation(item);
-                    setShowCheckout(true);
-                  }}
-                  className="w-full py-3 font-black text-xs uppercase tracking-widest rounded transition-all border-b-4 mt-auto group/btn hover:-translate-y-0.5 bg-purple-700 hover:bg-purple-600 text-white shadow-[0_10px_30px_rgba(168,85,247,0.3)] border-b-purple-900 hover:border-purple-600">
-                  <span className="inline-block transition-transform group-hover/btn:translate-x-1 text-[11px]">
-                    🛒 COMPRAR
-                  </span>
-                </button>
-              </div>
-            </div>
-          );
-          })}
-        </div>
-
-            {/* Comparison Table */}
-            <div className="mt-12 max-w-xl mx-auto">
-              <h3 className="text-xl font-black text-white mb-4 flex items-center justify-center gap-2">
-                <Sparkles className="w-5 h-5 text-purple-400" />
-                Comparativa
-              </h3>
-              <div className="bg-black/40 border border-purple-900/30 rounded overflow-hidden backdrop-blur-md text-xs">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-purple-900/30 bg-purple-950/30">
-                      <th className="px-3 py-1.5 text-left text-purple-400 font-bold">Paquete</th>
-                      <th className="px-3 py-1.5 text-right text-purple-400 font-bold">Creditos/$</th>
-                      <th className="px-3 py-1.5 text-right text-purple-400 font-bold">Valor</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {DONATIONS.map((item, i) => (
-                      <tr key={i} className={`border-b border-purple-900/20 transition-colors ${
-                        item.highlight ? 'bg-purple-900/30 hover:bg-purple-900/50' : 'hover:bg-purple-950/20'
-                      }`}>
-                        <td className="px-3 py-2 text-white font-bold">
-                          ${item.amount}
-                          {item.badge && <span className="ml-1 text-[9px] text-yellow-400">{item.badge}</span>}
-                        </td>
-                        <td className="px-3 py-2 text-right">
-                          <span className={`font-bold ${item.highlight ? 'text-yellow-400' : 'text-green-400'}`}>
-                            {(item.points / item.amount).toLocaleString()}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2 text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            <div className="w-16 bg-gray-800 rounded-full h-1.5">
-                              <div 
-                                className={`h-1.5 rounded-full transition-all ${item.highlight ? 'bg-yellow-500' : 'bg-purple-500'}`}
-                                style={{width: `${((item.points / item.amount) / MAX_CREDITS_PER_DOLLAR) * 100}%`}}
-                              />
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* RECOMPENSAS TAB */}
-        {activeTab === 'rewards' && (
-          <div>
-            <div className="flex flex-col items-center gap-2 mb-8 text-center">
-              <Gift className="w-12 h-12 text-[#d4af37] animate-pulse bg-[#d4af37]/10 p-3 rounded-full border border-[#d4af37]/30" />
-              <h1 className="text-5xl font-black italic tracking-tighter text-white drop-shadow-[0_0_30px_rgba(212,175,55,0.35)] uppercase">Arsenal de Recompensas</h1>
-              <p className="text-base text-gray-400 mt-2 leading-relaxed font-light max-w-2xl">Canjea tus puntos por equipo, reliquias y consumibles del reino.</p>
-            </div>
-
-            <div className="max-w-6xl mx-auto mb-8 rounded-2xl border border-[#d4af37]/20 bg-black/45 backdrop-blur-md p-5 shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
-              {/* ── Header row ── */}
-              <div className="px-6 py-4 bg-gradient-to-r from-[#d4af37]/10 via-[#d4af37]/5 to-transparent border-b border-[#d4af37]/15 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-[#d4af37]/15 border border-[#d4af37]/30 flex items-center justify-center shrink-0">
-                    <Shield className="w-4 h-4 text-[#d4af37]" />
-                  </div>
-                  <div>
-                    <p className="text-[10px] uppercase tracking-[0.3em] text-[#d4af37]/80 font-black">Destino de entrega</p>
-                    <p className="text-white font-black text-sm leading-none mt-0.5">¿Quién recibe el item?</p>
-                  </div>
+              )}
+              {purchaseError && (
+                <div className="flex items-center gap-3 bg-red-900/30 border border-red-500/40 rounded-xl px-6 py-3 mb-4">
+                  <AlertTriangle className="w-5 h-5 text-red-400" />
+                  <span className="text-red-300 font-semibold">{purchaseError}</span>
                 </div>
-                <div className="text-right">
-                  <p className="text-[10px] uppercase tracking-[0.2em] text-purple-400 font-bold">Cuenta activa</p>
-                  <p className="text-white font-black text-sm">{user?.username || 'Invitado'}</p>
-                </div>
-              </div>
+              )}
 
-              <div className="p-5">
-                {/* ── Mode toggle full-width pill ── */}
-                <div className="grid grid-cols-2 gap-2 p-1.5 rounded-2xl bg-[#0d0d18] border border-white/[0.07] mb-6">
-                  <button
-                    onClick={() => { setDeliveryMode('self'); setGiftCharacter(null); setGiftResults([]); setGiftSearchError(''); }}
-                    className={`flex items-center justify-center gap-2.5 px-4 py-3 rounded-xl font-black text-sm uppercase tracking-wider transition-all ${
-                      deliveryMode === 'self'
-                        ? 'bg-[#d4af37] text-black shadow-[0_4px_24px_rgba(212,175,55,0.5)]'
-                        : 'text-gray-400 hover:text-[#d4af37]'
-                    }`}
-                  >
-                    <Users className="w-4 h-4 shrink-0" />
-                    Mis personajes
-                  </button>
-                  <button
-                    onClick={() => { setDeliveryMode('gift'); setGiftPin(''); }}
-                    className={`flex items-center justify-center gap-2.5 px-4 py-3 rounded-xl font-black text-sm uppercase tracking-wider transition-all ${
-                      deliveryMode === 'gift'
-                        ? 'bg-rose-600 text-white shadow-[0_4px_24px_rgba(225,29,72,0.5)]'
-                        : 'text-gray-400 hover:text-rose-400'
-                    }`}
-                  >
-                    <Heart className="w-4 h-4 shrink-0" />
-                    🎁 Regalar a otro
-                  </button>
-                </div>
-
-                {/* ── OWN CHARACTERS GRID ── */}
-                {deliveryMode === 'self' && (
-                  <div>
-                    {characters.length === 0 ? (
-                      <div className="text-center py-10 border border-dashed border-white/10 rounded-xl">
-                        <Users className="w-10 h-10 text-gray-700 mx-auto mb-3" />
-                        <p className="text-gray-300 text-sm font-semibold">Sin personajes disponibles</p>
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-                        {characters.map(char => {
-                          const clsColor = CLASS_COLORS[char.class ?? 0] ?? '#9ca3af';
-                          const clsName  = CLASS_NAMES[char.class ?? 0]  ?? 'Desconocido';
-                          const isSelected = selectedCharacterGuid === String(char.guid);
-                          return (
-                            <button
-                              key={char.guid}
-                              onClick={() => setSelectedCharacterGuid(String(char.guid))}
-                              className={`relative flex flex-col items-start p-4 rounded-xl border transition-all text-left overflow-hidden ${
-                                isSelected
-                                  ? 'bg-[#0e0e1c] border-transparent'
-                                  : 'bg-[#0a0a16] border-white/[0.08] hover:border-white/20 hover:bg-[#0f0f1e]'
-                              }`}
-                              style={isSelected ? { boxShadow: `0 0 0 2px ${clsColor}, 0 8px 30px rgba(0,0,0,0.6)` } : {}}
-                            >
-                              {/* Colored top stripe */}
-                              <div className="absolute top-0 left-0 right-0 h-[3px] rounded-t-xl" style={{ backgroundColor: clsColor, opacity: isSelected ? 1 : 0.4 }} />
-                              {isSelected && (
-                                <div className="absolute top-2.5 right-2.5 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black text-black shadow-md" style={{ backgroundColor: clsColor }}>✓</div>
-                              )}
-                              {/* Class badge */}
-                              <span className="mt-1 mb-2 text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md" style={{ background: `${clsColor}25`, color: clsColor }}>
-                                {clsName}
-                              </span>
-                              <span className="font-black text-white text-base leading-tight">{char.name}</span>
-                              <span className="text-gray-300 text-xs font-semibold mt-1">Nivel {char.level ?? '?'}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* ── GIFT MODE ── */}
-                {deliveryMode === 'gift' && (
-                  <div>
-                    <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-rose-950/50 border border-rose-500/25 mb-5">
-                      <Heart className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
-                      <p className="text-rose-100 text-sm leading-relaxed font-medium">
-                        Los puntos se descuentan de <span className="font-black text-white">tu cuenta</span>. El item se entrega al personaje que elijas.
-                      </p>
-                    </div>
-
-                    <p className="text-xs uppercase tracking-[0.25em] text-gray-400 font-black mb-2">Nombre del personaje destino</p>
-                    <div className="flex gap-3 mb-4">
-                      <div className="relative flex-1">
-                        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-                        <input
-                          type="text"
-                          value={giftSearch}
-                          onChange={e => setGiftSearch(e.target.value)}
-                          onKeyDown={e => e.key === 'Enter' && searchGiftCharacter()}
-                          placeholder="Escribe el nombre exacto..."
-                          className="w-full pl-10 pr-4 py-3.5 rounded-xl bg-[#0d0d18] border border-white/10 text-white placeholder-gray-600 outline-none focus:border-rose-500/60 focus:bg-[#110d18] font-semibold transition-all text-sm"
-                        />
-                      </div>
-                      <button
-                        onClick={searchGiftCharacter}
-                        disabled={giftSearching}
-                        className="px-6 py-3.5 rounded-xl bg-rose-600 hover:bg-rose-500 active:scale-95 text-white font-black text-sm uppercase tracking-wider transition-all disabled:opacity-50 shadow-[0_4px_20px_rgba(225,29,72,0.35)] flex items-center gap-2"
-                      >
-                        {giftSearching
-                          ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                          : <><Search className="w-4 h-4" /> Buscar</>}
-                      </button>
-                    </div>
-
-                    {giftSearchError && (
-                      <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-rose-950/60 border border-rose-500/30 mb-4">
-                        <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
-                        <p className="text-rose-200 text-sm font-semibold">{giftSearchError}</p>
-                      </div>
-                    )}
-
-                    {giftResults.length > 0 && !giftCharacter && (
-                      <div>
-                        <p className="text-[10px] uppercase tracking-[0.25em] text-gray-400 font-black mb-2">Selecciona un personaje</p>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-2">
-                          {giftResults.map(char => {
-                            const clsColor = CLASS_COLORS[char.class ?? 0] ?? '#9ca3af';
-                            return (
-                              <button
-                                key={char.guid}
-                                onClick={() => { setGiftCharacter(char); setGiftResults([]); }}
-                                className="flex flex-col items-start p-3.5 rounded-xl bg-[#0a0a16] border border-white/[0.08] hover:bg-rose-950/50 hover:border-rose-500/50 transition-all text-left group"
-                              >
-                                <span className="text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded mb-1.5" style={{ background: `${clsColor}25`, color: clsColor }}>
-                                  {CLASS_NAMES[char.class ?? 0] ?? 'Clase ?'}
-                                </span>
-                                <span className="font-black text-white text-sm group-hover:text-rose-100 transition-colors">{char.name}</span>
-                                <span className="text-gray-400 text-xs font-semibold mt-0.5">Nivel {char.level ?? '?'}</span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-
-                    {giftCharacter && (() => {
-                      const clsColor = CLASS_COLORS[giftCharacter.class ?? 0] ?? '#9ca3af';
-                      const clsName  = CLASS_NAMES[giftCharacter.class ?? 0]  ?? 'Desconocido';
-                      return (
-                        <div className="flex items-center gap-4 px-5 py-4 rounded-xl border-2" style={{ borderColor: `${clsColor}80`, background: `${clsColor}0f` }}>
-                          <div className="w-11 h-11 rounded-full flex items-center justify-center shrink-0 font-black text-xl" style={{ background: `${clsColor}22`, color: clsColor }}>
-                            {giftCharacter.name.charAt(0).toUpperCase()}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="font-black text-white text-base leading-tight">{giftCharacter.name}</p>
-                            <p className="text-sm font-semibold mt-0.5" style={{ color: clsColor }}>
-                              {clsName}<span className="text-gray-300 font-normal"> · Nivel {giftCharacter.level ?? '?'}</span>
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-2 shrink-0">
-                            <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg text-white" style={{ background: `${clsColor}33` }}>✓ Listo</span>
-                            <button onClick={() => { setGiftCharacter(null); setGiftSearch(''); }} className="w-8 h-8 flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20 text-gray-400 hover:text-white transition-all">
-                              <X className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })()}
-
-                    {giftCharacter && (
-                      <div className="mt-5">
-                        <label className="block text-[10px] uppercase tracking-[0.25em] text-gray-400 font-black mb-2">
-                          PIN de seguridad para regalar
-                        </label>
-                        <input
-                          type="password"
-                          value={giftPin}
-                          onChange={e => setGiftPin(e.target.value)}
-                          inputMode="numeric"
-                          pattern="[0-9]{4}"
-                          maxLength={4}
-                          placeholder="Ingresa tu PIN de 4 digitos"
-                          className="w-full max-w-sm px-4 py-3 rounded-xl bg-[#0d0d18] border border-white/10 text-white placeholder-gray-600 outline-none focus:border-rose-500/60 focus:bg-[#110d18] font-semibold transition-all text-sm"
-                        />
-                        <p className="mt-2 text-xs text-gray-500 font-semibold">Se solicita tu PIN para autorizar regalos a otros personajes.</p>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {purchaseMessage && (
-                  <div className="mt-5 rounded-xl border border-emerald-500/30 bg-emerald-950/60 px-4 py-3 text-emerald-100 flex items-center gap-3 text-sm">
-                    <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
-                    <span className="font-semibold">{purchaseMessage}</span>
-                  </div>
-                )}
-
-                {purchaseError && (
-                  <div className="mt-5 rounded-xl border border-rose-500/30 bg-rose-950/60 px-4 py-3 text-rose-100 flex items-center gap-3 text-sm">
-                    <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0" />
-                    <span className="font-semibold">{purchaseError}</span>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* ── Shop Navigation ────────────────────────────────────────── */}
-            <div className="max-w-6xl mx-auto mb-6 px-4">
-              {/* Category tabs */}
-              <div className="flex gap-3 mb-4 flex-wrap">
+              {/* Category filters */}
+              <div className="flex flex-wrap gap-2 mb-4">
                 {SHOP_CATEGORIES.map(cat => (
                   <button
                     key={cat.id}
-                    onClick={() => {
-                      setShopCategory(cat.id);
-                      setShopTier(0);
-                      setTransmogTypeFilter('all');
-                      setTransmogLevelFilter(0);
-                      setProfessionFilter('all');
-                      setMountFactionFilter('all');
-                      setTier9FactionFilter('all');
-                    }}
-                    className={`px-7 py-3 rounded-xl font-black text-base tracking-widest uppercase transition-all border-2 ${
-                      shopCategory === cat.id
-                        ? 'bg-[#d4af37] text-black border-[#d4af37] shadow-[0_0_20px_rgba(212,175,55,0.6)]'
-                        : 'bg-black/50 text-gray-300 border-purple-900/40 hover:border-[#d4af37]/60 hover:text-[#d4af37]'
-                    }`}
-                  >
-                    {cat.label}
-                  </button>
+                    onClick={() => { setShopCategory(cat.id); setShopTier(0); setShopClassFilter(0); }}
+                    className={`px-4 py-2 rounded-xl text-sm font-bold border transition-all ${shopCategory === cat.id ? 'bg-purple-700 border-purple-500 text-white' : 'bg-black/30 border-purple-700/30 text-gray-400 hover:text-white'}`}
+                  >{cat.label}</button>
                 ))}
               </div>
 
-              {/* Tier sub-tabs — solo visibles en PvE */}
+              {/* Sub-filters: PvE tiers */}
+              {/* Sub-filters logic mapping */}
               {shopCategory === 'pve' && (
-                <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
-                  <button
-                    onClick={() => setShopTier(0)}
-                    className={`px-6 py-2.5 rounded-lg font-black text-sm tracking-wider uppercase whitespace-nowrap transition-all border-2 shrink-0 ${
-                      shopTier === 0
-                        ? 'bg-purple-600 text-white border-purple-400 shadow-[0_0_12px_rgba(168,85,247,0.6)]'
-                        : 'bg-black/50 text-gray-300 border-purple-900/40 hover:border-purple-500 hover:text-white'
-                    }`}
-                  >
-                    TODOS
-                  </button>
-                  {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(t => (
-                    <button
-                      key={t}
-                      onClick={() => setShopTier(t)}
-                      className={`px-6 py-2.5 rounded-lg font-black text-sm tracking-wider uppercase whitespace-nowrap transition-all border-2 shrink-0 ${
-                        shopTier === t
-                          ? 'bg-purple-600 text-white border-purple-400 shadow-[0_0_12px_rgba(168,85,247,0.6)]'
-                          : 'bg-black/50 text-gray-300 border-purple-900/40 hover:border-purple-500 hover:text-white'
-                      }`}
-                    >
-                      Tier {t}
+                <div className="flex flex-wrap gap-2 mb-4">
+                  {[0,1,2,3,4,5,6,7,8,9].map(t => (
+                    <button key={t} onClick={() => setShopTier(t)} className={`px-4 py-2 rounded-lg text-sm font-bold border transition-colors ${shopTier === t ? 'bg-yellow-600 border-yellow-500 text-white shadow-[0_0_10px_rgba(202,138,4,0.5)]' : 'bg-black/30 border-gray-600 text-gray-400 hover:text-white hover:border-gray-400'}`}>
+                      {t === 0 ? 'Todos los Tiers' : `Tier ${t}`}
                     </button>
                   ))}
                 </div>
-              )}
-
-              {shopCategory === 'pve' && shopTier === 9 && (
-                <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
-                  {[
-                    { id: 'all', label: 'Todas las facciones' },
-                    { id: 'horda', label: 'Horda' },
-                    { id: 'alianza', label: 'Alianza' },
-                  ].map(f => (
-                    <button
-                      key={f.id}
-                      onClick={() => setTier9FactionFilter(f.id as 'all' | 'horda' | 'alianza')}
-                      className={`px-6 py-2.5 rounded-lg font-black text-sm tracking-wider uppercase whitespace-nowrap transition-all border-2 shrink-0 ${
-                        tier9FactionFilter === f.id
-                          ? 'bg-rose-600 text-white border-rose-400 shadow-[0_0_12px_rgba(225,29,72,0.5)]'
-                          : 'bg-black/50 text-gray-300 border-rose-900/40 hover:border-rose-500 hover:text-white'
-                      }`}
-                    >
-                      {f.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {shopCategory === 'transmog' && (
-                <>
-                  <div className="flex gap-2 mb-3 overflow-x-auto pb-1">
-                    {[
-                      { id: 'all', label: 'Todo tipo' },
-                      { id: 'arma', label: 'Armas' },
-                      { id: 'armadura', label: 'Armaduras' },
-                    ].map(t => (
-                      <button
-                        key={t.id}
-                        onClick={() => setTransmogTypeFilter(t.id as 'all' | 'arma' | 'armadura')}
-                        className={`px-6 py-2.5 rounded-lg font-black text-sm tracking-wider uppercase whitespace-nowrap transition-all border-2 shrink-0 ${
-                          transmogTypeFilter === t.id
-                            ? 'bg-cyan-600 text-white border-cyan-400 shadow-[0_0_12px_rgba(8,145,178,0.55)]'
-                            : 'bg-black/50 text-gray-300 border-cyan-900/40 hover:border-cyan-500 hover:text-white'
-                        }`}
-                      >
-                        {t.label}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
-                    {[
-                      { id: 0, label: 'Todo nivel' },
-                      { id: 60, label: 'Nivel 60' },
-                      { id: 70, label: 'Nivel 70' },
-                    ].map(l => (
-                      <button
-                        key={l.id}
-                        onClick={() => setTransmogLevelFilter(l.id as 0 | 60 | 70)}
-                        className={`px-6 py-2.5 rounded-lg font-black text-sm tracking-wider uppercase whitespace-nowrap transition-all border-2 shrink-0 ${
-                          transmogLevelFilter === l.id
-                            ? 'bg-cyan-700 text-white border-cyan-500 shadow-[0_0_12px_rgba(14,116,144,0.55)]'
-                            : 'bg-black/50 text-gray-300 border-cyan-900/40 hover:border-cyan-500 hover:text-white'
-                        }`}
-                      >
-                        {l.label}
-                      </button>
-                    ))}
-                  </div>
-                </>
               )}
 
               {shopCategory === 'profesiones' && (
-                <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
-                  {PROFESSIONS.map(p => (
-                    <button
-                      key={p}
-                      onClick={() => setProfessionFilter(p)}
-                      className={`px-5 py-2.5 rounded-lg font-black text-sm tracking-wider uppercase whitespace-nowrap transition-all border-2 shrink-0 ${
-                        professionFilter === p
-                          ? 'bg-emerald-600 text-white border-emerald-400 shadow-[0_0_12px_rgba(16,185,129,0.55)]'
-                          : 'bg-black/50 text-gray-300 border-emerald-900/40 hover:border-emerald-500 hover:text-white'
-                      }`}
-                    >
-                      {p === 'all' ? 'Todas' : p}
+                <div className="flex flex-wrap gap-2 mb-4">
+                  <button onClick={() => setShopTier(0)} className={`px-4 py-2 rounded-lg text-sm font-bold border transition-colors ${shopTier === 0 ? 'bg-emerald-600 border-emerald-500 text-white' : 'bg-black/30 border-gray-600 text-gray-400'}`}>Todas</button>
+                  {/* Map index as tier (1 to 12) for professions */}
+                  {PROFESSIONS.filter(p => p !== 'all').map((prof, idx) => {
+                    const t = idx + 1; // 1 to length
+                    return (
+                    <button key={t} onClick={() => setShopTier(t)} className={`px-4 py-2 rounded-lg text-sm font-bold border transition-colors ${shopTier === t ? 'bg-emerald-600 border-emerald-500 text-white shadow-[0_0_10px_rgba(16,185,129,0.5)]' : 'bg-black/30 border-gray-600 text-gray-400 hover:text-white hover:border-gray-400'}`}>
+                      {prof.charAt(0).toUpperCase() + prof.slice(1)}
                     </button>
-                  ))}
+                  )})}
                 </div>
               )}
 
               {shopCategory === 'monturas' && (
-                <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
-                  {[
-                    { id: 'all', label: 'Todas' },
-                    { id: 'horda', label: 'Horda' },
-                    { id: 'alianza', label: 'Alianza' },
-                  ].map(f => (
-                    <button
-                      key={f.id}
-                      onClick={() => setMountFactionFilter(f.id as 'all' | 'horda' | 'alianza')}
-                      className={`px-6 py-2.5 rounded-lg font-black text-sm tracking-wider uppercase whitespace-nowrap transition-all border-2 shrink-0 ${
-                        mountFactionFilter === f.id
-                          ? 'bg-red-700 text-white border-red-400 shadow-[0_0_12px_rgba(220,38,38,0.5)]'
-                          : 'bg-black/50 text-gray-300 border-red-900/40 hover:border-red-500 hover:text-white'
-                      }`}
-                    >
-                      {f.label}
-                    </button>
-                  ))}
+                <div className="flex flex-wrap gap-2 mb-4">
+                  <button onClick={() => setShopTier(0)} className={`px-4 py-2 rounded-lg text-sm font-bold border ${shopTier === 0 ? 'bg-blue-600 border-blue-500 text-white' : 'bg-black/30 border-gray-600 text-gray-400'}`}>Todas</button>
+                  <button onClick={() => setShopTier(1)} className={`px-4 py-2 rounded-lg text-sm font-bold border ${shopTier === 1 ? 'bg-blue-600 border-blue-500 text-white' : 'bg-black/30 border-gray-600 text-gray-400'}`}>Terrestres</button>
+                  <button onClick={() => setShopTier(2)} className={`px-4 py-2 rounded-lg text-sm font-bold border ${shopTier === 2 ? 'bg-blue-600 border-blue-500 text-white' : 'bg-black/30 border-gray-600 text-gray-400'}`}>Voladoras</button>
                 </div>
               )}
 
-              {/* Filtro por clase */}
-              {['all', 'pve', 'pvp', 'transmog'].includes(shopCategory) && (
-                <div className="flex gap-2.5 flex-wrap pb-1">
-                  {WOW_CLASSES.map(cls => (
-                    <button
-                      key={cls.mask}
-                      onClick={() => setShopClassFilter(cls.mask)}
-                      title={cls.name}
-                      className={`px-4 sm:px-5 py-2.5 rounded-lg font-black text-sm sm:text-[13px] tracking-wider uppercase transition-all border-2 shrink-0 whitespace-nowrap ${
-                        shopClassFilter === cls.mask
-                          ? 'border-transparent text-black shadow-[0_0_10px_rgba(255,255,255,0.2)]'
-                          : 'bg-black/50 border-purple-900/40 hover:border-white/30 hover:bg-black/70'
-                      }`}
-                      style={
-                        shopClassFilter === cls.mask
-                          ? { backgroundColor: cls.color, borderColor: cls.color }
-                          : { color: cls.color }
-                      }
-                    >
-                      <span className="sm:hidden">{cls.abbr}</span>
-                      <span className="hidden sm:inline">{cls.name}</span>
-                    </button>
-                  ))}
+              {shopCategory === 'transmo' && (
+                <div className="flex flex-wrap gap-2 mb-4">
+                  <button onClick={() => setShopTier(0)} className={`px-4 py-2 rounded-lg text-sm font-bold border ${shopTier === 0 ? 'bg-fuchsia-600 border-fuchsia-500 text-white' : 'bg-black/30 border-gray-600 text-gray-400'}`}>Todos</button>
+                  <button onClick={() => setShopTier(1)} className={`px-4 py-2 rounded-lg text-sm font-bold border ${shopTier === 1 ? 'bg-fuchsia-600 border-fuchsia-500 text-white' : 'bg-black/30 border-gray-600 text-gray-400'}`}>Tela</button>
+                  <button onClick={() => setShopTier(2)} className={`px-4 py-2 rounded-lg text-sm font-bold border ${shopTier === 2 ? 'bg-fuchsia-600 border-fuchsia-500 text-white' : 'bg-black/30 border-gray-600 text-gray-400'}`}>Cuero</button>
+                  <button onClick={() => setShopTier(3)} className={`px-4 py-2 rounded-lg text-sm font-bold border ${shopTier === 3 ? 'bg-fuchsia-600 border-fuchsia-500 text-white' : 'bg-black/30 border-gray-600 text-gray-400'}`}>Malla</button>
+                  <button onClick={() => setShopTier(4)} className={`px-4 py-2 rounded-lg text-sm font-bold border ${shopTier === 4 ? 'bg-fuchsia-600 border-fuchsia-500 text-white' : 'bg-black/30 border-gray-600 text-gray-400'}`}>Placas</button>
+                  <button onClick={() => setShopTier(5)} className={`px-4 py-2 rounded-lg text-sm font-bold border ${shopTier === 5 ? 'bg-fuchsia-600 border-fuchsia-500 text-white' : 'bg-black/30 border-gray-600 text-gray-400'}`}>Armas/Otros</button>
                 </div>
               )}
 
-              <p className="text-sm text-gray-400 mt-3 pl-0.5 font-semibold">
-                {filteredShopItems.length} item{filteredShopItems.length !== 1 ? 's' : ''} encontrados
-              </p>
-            </div>
+              {shopCategory === 'boost' && (
+                <div className="flex flex-wrap gap-2 mb-4">
+                  <button onClick={() => setShopTier(0)} className={`px-4 py-2 rounded-lg text-sm font-bold border ${shopTier === 0 ? 'bg-orange-600 border-orange-500 text-white' : 'bg-black/30 border-gray-600 text-gray-400'}`}>Todos</button>
+                  <button onClick={() => setShopTier(60)} className={`px-4 py-2 rounded-lg text-sm font-bold border ${shopTier === 60 ? 'bg-orange-600 border-orange-500 text-white' : 'bg-black/30 border-gray-600 text-gray-400'}`}>Insta Nivel 60</button>
+                  <button onClick={() => setShopTier(70)} className={`px-4 py-2 rounded-lg text-sm font-bold border ${shopTier === 70 ? 'bg-orange-600 border-orange-500 text-white' : 'bg-black/30 border-gray-600 text-gray-400'}`}>Insta Nivel 70</button>
+                  <button onClick={() => setShopTier(80)} className={`px-4 py-2 rounded-lg text-sm font-bold border ${shopTier === 80 ? 'bg-orange-600 border-orange-500 text-white' : 'bg-black/30 border-gray-600 text-gray-400'}`}>Insta Nivel 80</button>
+                </div>
+              )}
 
-            {filteredShopItems.length === 0 ? (
-              <div className="max-w-6xl mx-auto p-8 rounded-2xl border border-[#d4af37]/20 bg-black/45 text-center">
-                <Gift className="w-10 h-10 text-[#d4af37]/70 mx-auto mb-3" />
-                <p className="text-white font-black text-lg">Sin items cargados</p>
-                <p className="text-gray-400 mt-2">Aun no hay recompensas publicadas. Puedes cargarlas desde el panel de administracion.</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 p-4 max-w-6xl mx-auto">
-                {filteredShopItems.map((item) => (
-                <div key={item.id} className="group bg-[#09090c]/85 border border-purple-900/30 rounded-2xl p-5 shadow-[0_18px_40px_rgba(0,0,0,0.35)] backdrop-blur-md hover:border-[#d4af37]/35 transition-all">
-                  <div className="relative flex items-center gap-4">
-                    <a
-                      href={`https://es.wowhead.com/wotlk/item=${item.item_id}`}
-                      data-wh-icon-size="large"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="shrink-0"
-                    >
-                      <img
-                        src={`/icons/${item.image}.png`}
-                        alt={item.name}
-                        className="w-14 h-14 rounded-xl border-2 border-[#d4af37]/40 bg-black/60 object-cover group-hover:border-[#d4af37] transition-colors"
-                      />
-                    </a>
-                    <div className="min-w-0">
-                      <p className="text-[10px] uppercase tracking-[0.22em] text-purple-400 font-black mb-1">{item.quality}</p>
-                      <h3 className="text-white font-black text-lg leading-tight truncate">{item.name}</h3>
-                      <p className="text-[#d4af37] font-mono text-sm mt-1">{item.price.toLocaleString()} {item.currency.toUpperCase()}</p>
-                    </div>
-
-                    <div className="pointer-events-none absolute left-16 -top-3 z-30 hidden lg:block opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-200">
-                      <div className="w-72 rounded-xl border border-[#d4af37]/30 bg-[#07070d]/95 backdrop-blur-md p-3 shadow-[0_18px_35px_rgba(0,0,0,0.55)]">
-                        <div className="flex items-start gap-3">
-                          <img
-                            src={`/icons/${item.image}.png`}
-                            alt={item.name}
-                            className="w-12 h-12 rounded-lg border border-[#d4af37]/40 bg-black/70 object-cover"
-                          />
-                          <div className="min-w-0 text-left">
-                            <p className="text-[10px] uppercase tracking-[0.2em] text-purple-300 font-black">{item.quality}</p>
-                            <p className="text-sm font-black text-white leading-tight mt-1 break-words">{item.name}</p>
-                            <p className="text-[#d4af37] font-mono text-xs mt-1">{item.price.toLocaleString()} {item.currency.toUpperCase()}</p>
-                          </div>
-                        </div>
-                        <p className="mt-2 text-[11px] text-gray-400 leading-relaxed text-left">Previsualizacion rapida del item. Haz click en el icono para abrir la ficha completa.</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 rounded-xl border border-white/10 bg-black/25 px-4 py-3 text-xs text-gray-400 leading-relaxed">
-                    Enlace rapido a base de datos pública del item. Compra directa al personaje seleccionado arriba.
-                  </div>
-
+              {/* Class filter */}
+              <div className="flex flex-wrap gap-2 mb-6">
+                {WOW_CLASSES.map(cls => (
                   <button
-                    onClick={() => handlePurchase(item.id)}
-                    disabled={purchasingItemId === item.id || !selectedCharacterGuid}
-                    className="w-full mt-4 inline-flex items-center justify-center gap-2 bg-gradient-to-r from-[#5b1d8c] to-[#7a2bc2] hover:from-[#6b22a4] hover:to-[#8f37db] text-white py-3.5 rounded-xl transition font-black text-base border border-purple-400/20 disabled:opacity-60 disabled:cursor-not-allowed shadow-[0_12px_30px_rgba(91,29,140,0.35)]"
-                  >
-                    <ShoppingCart className="w-4 h-4" />
-                    {purchasingItemId === item.id ? 'Procesando...' : (deliveryMode === 'gift' ? 'Regalar ahora' : 'Comprar ahora')}
-                  </button>
-                </div>
+                    key={cls.mask}
+                    onClick={() => setShopClassFilter(shopClassFilter === cls.mask ? 0 : cls.mask)}
+                    style={{ borderColor: shopClassFilter === cls.mask ? cls.color : undefined, color: shopClassFilter === cls.mask ? cls.color : undefined }}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-bold border transition-all ${shopClassFilter === cls.mask ? 'bg-black/80 shadow-[0_0_8px_currentColor]' : 'bg-black/30 border-gray-700 text-gray-400 hover:bg-black/50 hover:border-gray-500'}`}
+                  >{cls.name}</button>
                 ))}
               </div>
-            )}
-          </div>
-        )}
-      </div>
 
-      {/* CHECKOUT MODAL */}
-      {showCheckout && selectedDonation && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-gradient-to-br from-purple-900/80 to-black/80 border-2 border-purple-600 rounded-lg max-w-2xl w-full p-8 max-h-[90vh] overflow-y-auto">
-            {/* Close Button */}
-            <button
-              onClick={() => setShowCheckout(false)}
-              className="absolute top-4 right-4 p-2 hover:bg-purple-700/50 rounded-lg transition-all"
-            >
-              <X className="w-6 h-6 text-white" />
-            </button>
-
-            {/* Header */}
-            <div className="text-center mb-8">
-              <h2 className="text-4xl font-black text-white mb-4">Selecciona tu Método de Pago</h2>
-              <div className="flex justify-center items-center gap-4 bg-purple-900/30 rounded-lg p-4">
-                <Image 
-                  src="/coin.png" 
-                  alt="Coin" 
-                  width={60}
-                  height={60}
-                  className="drop-shadow-[0_0_15px_rgba(168,85,247,0.8)]"
-                />
-                <div className="text-left">
-                  <div className="text-purple-200 font-semibold">Cantidad: ${selectedDonation.amount}</div>
-                  <div className="text-yellow-400 font-black text-xl">{selectedDonation.points.toLocaleString()} Creditos</div>
-                  <div className="text-gray-400 text-sm">{selectedDonation.plan}{selectedDonation.bonus > 0 ? ` • +${selectedDonation.bonus}% bonus` : ''}</div>
+              {/* Items grid */}
+              {shopItems.length === 0 ? (
+                <div className="text-center py-20 text-gray-500">
+                  <Zap className="w-12 h-12 mx-auto mb-4 opacity-30" />
+                  <p>No hay items en la tienda aún. El administrador puede añadirlos desde el panel.</p>
                 </div>
+              ) : filteredShopItems.length === 0 ? (
+                <div className="text-center py-16 text-gray-500">
+                  <p>No hay items en esta categoría / filtro.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                  {filteredShopItems.map(item => {
+                    const qualityColors: Record<string, string> = {
+                      common: '#9d9d9d', uncommon: '#1eff00', rare: '#0070dd', epic: '#a335ee', legendary: '#ff8000',
+                    };
+                    const borderColor = qualityColors[item.quality] || '#555';
+                    const isPurchasing = purchasingItemId === item.id;
+                    return (
+                      <div
+                        key={item.id}
+                        style={{ borderColor }}
+                        className="relative flex flex-col items-center bg-[#060a13]/90 rounded-2xl border-2 p-4 hover:scale-105 transition-all duration-200 group cursor-default"
+                      >
+                        <div className="flex-1 w-full space-y-4">
+                          <div className="flex gap-4 group/item">
+                            <a 
+                              href={item.item_id && item.item_id > 0 ? `https://www.wowhead.com/wotlk/item=${item.item_id}` : '#'}
+                              data-wowhead={item.item_id && item.item_id > 0 ? `item=${item.item_id}&domain=wotlk` : ''}
+                              target="_blank"
+                              rel="noopener"
+                              className="relative w-20 h-20 flex-shrink-0"
+                            >
+                              <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-white/10 to-transparent group-hover/item:opacity-0 transition-opacity" />
+                              {(() => {
+                                const rawIcon = (item.image || 'inv_misc_questionmark').trim().toLowerCase();
+                                const iconName = rawIcon || 'inv_misc_questionmark';
+                                const imageSrc = iconName.startsWith('http') 
+                                  ? iconName 
+                                  : (iconName.startsWith('/') || iconName.includes('.') 
+                                      ? (iconName.startsWith('/') ? iconName : `/items/${iconName}`)
+                                      : `https://wow.zamimg.com/images/wow/icons/large/${iconName}.jpg`
+                                    );
+                                
+                                return (
+                                  <Image
+                                    src={imageSrc}
+                                    alt={item.name}
+                                    fill
+                                    className="rounded-xl object-cover border border-white/10 shadow-lg"
+                                    onError={(e) => {
+                                      const target = e.target as HTMLImageElement;
+                                      if (target.src !== '/items/default.png') {
+                                        target.src = '/items/default.png';
+                                      }
+                                    }}
+                                    unoptimized={imageSrc.startsWith('http')}
+                                  />
+                                );
+                              })()}
+                            </a>
+
+                            <div className="flex-1 flex flex-col justify-center min-w-0">
+                              <span className={`text-[10px] font-black uppercase tracking-widest mb-1 ${
+                                item.quality === 'leyenda' ? 'text-orange-400' : 
+                                item.quality === 'epico' ? 'text-purple-400' : 
+                                item.quality === 'raro' ? 'text-blue-400' : 'text-gray-400'
+                              }`}>
+                                {item.quality || 'COMÚN'}
+                              </span>
+                              <a
+                                href={item.item_id && item.item_id > 0 ? `https://www.wowhead.com/wotlk/item=${item.item_id}` : '#'}
+                                data-wowhead={item.item_id && item.item_id > 0 ? `item=${item.item_id}&domain=wotlk` : ''}
+                                target="_blank"
+                                rel="noopener"
+                                className="text-white font-black text-lg leading-tight block group-hover/item:text-cyan-300 transition-colors"
+                              >
+                                {item.name}
+                              </a>
+                              <div className="flex items-center gap-2 mt-1">
+                                <span className="text-yellow-400 font-black text-base">{item.price}</span>
+                                <span className="text-yellow-400/60 font-bold text-xs uppercase tracking-tighter">
+                                  Créditos
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <p className="text-[11px] text-gray-400 leading-relaxed italic opacity-70">
+                            Previsualización rápida del ítem. Haz click en el icono para abrir la ficha completa.
+                          </p>
+                          
+                          {item.class_mask !== undefined && Number(item.class_mask) > 0 && (
+                            <div className="flex flex-wrap gap-1">
+                              {WOW_CLASSES.filter(c => c.mask !== 0 && (Number(item.class_mask) & c.mask)).map(c => (
+                                <span key={c.mask} className="px-1.5 py-0.5 rounded bg-white/5 border border-white/5 text-[9px] font-bold text-gray-400 uppercase">
+                                  {c.abbr}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        <button
+                          onClick={() => handlePurchase(item.id)}
+                          disabled={isPurchasing}
+                          className={`w-full mt-4 py-4 rounded-xl flex items-center justify-center gap-3 font-black text-sm uppercase tracking-wider transition-all shadow-xl hover:scale-[1.02] active:scale-[0.98] ${
+                            isPurchasing 
+                              ? 'bg-gray-800 text-gray-400 cursor-not-allowed'
+                              : 'bg-gradient-to-r from-purple-600 to-indigo-700 hover:from-purple-500 hover:to-indigo-600 text-white shadow-purple-900/20'
+                          }`}
+                        >
+                          {isPurchasing ? (
+                            <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                          ) : (
+                            <ShoppingCart className="w-5 h-5" />
+                          )}
+                          {isPurchasing ? 'Procesando…' : 'Comprar ahora'}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
+        </section>
+      )}
+    </div>
+
+    {/* Payment modal (shown from donations tab) */}
+    {showCheckout && selectedDonation && (
+      <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="bg-gradient-to-br from-purple-900/80 to-black/80 border-2 border-purple-600 rounded-lg max-w-2xl w-full p-8 max-h-[90vh] overflow-y-auto relative">
+          <button onClick={() => setShowCheckout(false)} className="absolute top-4 right-4 p-2 hover:bg-purple-700/50 rounded-lg transition-all">
+            <X className="w-6 h-6 text-white" />
+          </button>
+          <div className="text-center mb-8">
+            <h2 className="text-4xl font-black text-white mb-4">Selecciona tu Método de Pago</h2>
+            <div className="flex justify-center items-center gap-4 bg-purple-900/30 rounded-lg p-4">
+              <img src="/coin.png" alt="Créditos" className="w-14 h-14 drop-shadow-[0_0_15px_rgba(168,85,247,0.8)]" />
+              <div className="text-left">
+                <div className="text-purple-200 font-semibold">Cantidad: ${selectedDonation.amount} USD</div>
+                <div className="text-yellow-400 font-black text-xl">{selectedDonation.points} Créditos</div>
+                <div className="text-gray-400 text-sm">{selectedDonation.plan}{selectedDonation.bonus > 0 ? ` • +${selectedDonation.bonus}% bonus` : ''}</div>
               </div>
             </div>
-
-            {/* Payment Methods Grid */}
-            <div className="grid grid-cols-2 gap-4 mb-8">
-              {/* PayPal */}
-              <button
-                onClick={() => window.open('https://paypal.com', '_blank')}
-                className="p-6 bg-blue-600 hover:bg-blue-500 text-white rounded-lg border-2 border-blue-400 transition-all hover:scale-105"
-              >
-                <div className="text-4xl mb-2">💳</div>
-                <div className="font-black text-lg">PayPal</div>
-                <div className="text-xs text-blue-200 mt-1">Pago Seguro</div>
-              </button>
-
-              {/* Tarjeta de Crédito */}
-              <button
-                onClick={() => alert('Procesando pago con tarjeta...')}
-                className="p-6 bg-red-600 hover:bg-red-500 text-white rounded-lg border-2 border-red-400 transition-all hover:scale-105"
-              >
-                <div className="text-4xl mb-2">🏦</div>
-                <div className="font-black text-lg">Tarjeta</div>
-                <div className="text-xs text-red-200 mt-1">Crédito/Débito</div>
-              </button>
-
-              {/* Criptomoneda */}
-              <button
-                onClick={handleCryptomusCheckout}
-                disabled={creatingCryptoInvoice}
-                className="p-6 bg-orange-600 hover:bg-orange-500 text-white rounded-lg border-2 border-orange-400 transition-all hover:scale-105"
-              >
-                <div className="text-4xl mb-2">₿</div>
-                <div className="font-black text-lg">Cripto</div>
-                <div className="text-xs text-orange-200 mt-1">{creatingCryptoInvoice ? 'Generando factura...' : 'Pagar con Cryptomus'}</div>
-              </button>
-
-              {/* Código QR */}
-              <button
-                onClick={() => alert('Mostrando código QR para pagar...')}
-                className="p-6 bg-green-600 hover:bg-green-500 text-white rounded-lg border-2 border-green-400 transition-all hover:scale-105"
-              >
-                <div className="text-4xl mb-2">📱</div>
-                <div className="font-black text-lg">QR</div>
-                <div className="text-xs text-green-200 mt-1">Escanea</div>
-              </button>
-            </div>
-
-            {/* Info Text */}
-            <div className="bg-purple-900/30 border border-purple-600/50 rounded-lg p-4 text-center text-gray-300 text-sm">
-              <p>Todos los pagos son procesados de forma segura. Una vez completado, recibirás tus puntos inmediatamente.</p>
-            </div>
-
-            {/* Cancel Button */}
-            <button
-              onClick={() => setShowCheckout(false)}
-              className="w-full mt-6 py-3 bg-gray-700 hover:bg-gray-600 text-white font-bold rounded-lg transition-all"
-            >
-              Cancelar
-            </button>
           </div>
+          <div className="grid grid-cols-2 gap-4 mb-8">
+            <div className="p-6 bg-black/40 border border-yellow-400/30 rounded-lg flex flex-col items-center">
+              <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" className="mb-2"><rect width="48" height="48" rx="12" fill="#F3BA2F" /><rect x="20" y="8" width="8" height="8" rx="2" fill="#181A20" /><rect x="8" y="20" width="8" height="8" rx="2" fill="#181A20" /><rect x="32" y="20" width="8" height="8" rx="2" fill="#181A20" /><rect x="20" y="32" width="8" height="8" rx="2" fill="#181A20" /><rect x="14" y="14" width="20" height="20" rx="4" fill="#181A20" /></svg>
+              <div className="font-black text-2xl mb-1">Binance</div>
+              <div className="text-yellow-300 font-bold mb-2">USDT, BNB, BTC</div>
+              <div className="text-gray-400 text-sm mb-4 text-center">Envío directo a wallet. Solicita el QR al staff.</div>
+              <button className="bg-yellow-400 text-black font-bold px-6 py-3 rounded-lg">Solicitar QR</button>
+            </div>
+            <div className="p-6 bg-black/40 border border-blue-400/30 rounded-lg flex flex-col items-center">
+              <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" className="mb-2"><rect width="48" height="48" rx="12" fill="#0070BA" /><ellipse cx="24" cy="24" rx="14" ry="8" fill="#fff" /><rect x="18" y="16" width="12" height="16" rx="6" fill="#003087" /><rect x="22" y="20" width="4" height="8" rx="2" fill="#0070BA" /></svg>
+              <div className="font-black text-2xl mb-1">PayPal</div>
+              <div className="text-blue-300 font-bold mb-2">Pago internacional</div>
+              <div className="text-gray-400 text-sm mb-4 text-center">Solicita el correo PayPal al staff.</div>
+              <button className="bg-blue-400 text-black font-bold px-6 py-3 rounded-lg">Solicitar correo</button>
+            </div>
+            <div className="p-6 bg-black/40 border border-red-400/30 rounded-lg flex flex-col items-center">
+              <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" className="mb-2"><rect width="48" height="48" rx="12" fill="#E51C23" /><rect x="8" y="16" width="32" height="16" rx="4" fill="#fff" /><rect x="12" y="20" width="8" height="8" rx="2" fill="#F3BA2F" /><rect x="28" y="20" width="8" height="8" rx="2" fill="#0070BA" /></svg>
+              <div className="font-black text-2xl mb-1">Tarjeta de crédito</div>
+              <div className="text-red-300 font-bold mb-2">Visa, MasterCard</div>
+              <div className="text-gray-400 text-sm mb-4 text-center">Solicita el enlace de pago al staff.</div>
+              <button className="bg-red-400 text-black font-bold px-6 py-3 rounded-lg">Solicitar enlace</button>
+            </div>
+            <div className="p-6 bg-black/40 border border-green-400/30 rounded-lg flex flex-col items-center">
+              <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" className="mb-2"><rect width="48" height="48" rx="12" fill="#43A047" /><rect x="12" y="12" width="24" height="24" rx="4" fill="#fff" /><rect x="16" y="16" width="4" height="4" fill="#43A047" /><rect x="28" y="16" width="4" height="4" fill="#43A047" /><rect x="16" y="28" width="4" height="4" fill="#43A047" /><rect x="28" y="28" width="4" height="4" fill="#43A047" /><rect x="22" y="22" width="4" height="4" fill="#43A047" /></svg>
+              <div className="font-black text-2xl mb-1">QR Bolivia</div>
+              <div className="text-green-300 font-bold mb-2">Solo para Bolivia</div>
+              <div className="text-gray-400 text-sm mb-4 text-center">El QR puede caducar, revisa las instrucciones.</div>
+              <a href="/payments/qr-bolivia" target="_blank" rel="noopener" className="bg-green-400 text-black font-bold px-6 py-3 rounded-lg block hover:bg-green-500 transition-all">Ver QR</a>
+            </div>
+          </div>
+          <div className="bg-purple-900/30 border border-purple-600/50 rounded-lg p-4 text-center text-gray-300 text-sm mb-4">
+            <p>Todos los pagos son procesados de forma segura. Una vez completado, recibirás tus créditos inmediatamente.</p>
+          </div>
+          <button onClick={() => setShowCheckout(false)} className="w-full py-3 bg-gray-700 hover:bg-gray-600 text-white font-bold rounded-lg transition-all">Cancelar</button>
         </div>
-      )}
-    </main>
+      </div>
+    )}
+  </main>
   );
 }
+
