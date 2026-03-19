@@ -49,11 +49,15 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const { accountId, avatar } = await request.json();
+    const body = await request.json();
+    const { accountId, avatar, currency = 'dp' } = body;
 
     if (!accountId || !avatar) {
       return NextResponse.json({ error: 'accountId and avatar are required' }, { status: 400 });
     }
+
+    const curr = String(currency).toLowerCase() === 'vp' ? 'vp' : 'dp';
+    const cost = curr === 'vp' ? 30 : 1;
 
     const account = await getAccount(String(accountId));
     if (!account) {
@@ -75,26 +79,26 @@ export async function POST(request: Request) {
 
     if (requiresPayment) {
       const [accountRows]: any = await authPool.query(
-        'SELECT dp FROM account WHERE id = ? LIMIT 1',
+        `SELECT ${curr} FROM account WHERE id = ? LIMIT 1`,
         [accountId]
       );
 
-      const currentDp = Number(accountRows?.[0]?.dp || 0);
-      if (currentDp < AVATAR_CHANGE_COST_DP) {
+      const currentPoints = Number(accountRows?.[0]?.[curr] || 0);
+      if (currentPoints < cost) {
         return NextResponse.json(
-          { error: `Necesitas ${AVATAR_CHANGE_COST_DP} credito para cambiar el avatar` },
+          { error: `Necesitas ${cost} ${curr.toUpperCase()} para cambiar de avatar.` },
           { status: 400 }
         );
       }
 
       const [updateResult]: any = await authPool.query(
-        'UPDATE account SET dp = dp - ? WHERE id = ? AND dp >= ?',
-        [AVATAR_CHANGE_COST_DP, accountId, AVATAR_CHANGE_COST_DP]
+        `UPDATE account SET ${curr} = ${curr} - ? WHERE id = ? AND ${curr} >= ?`,
+        [cost, accountId, cost]
       );
 
       if (!updateResult?.affectedRows) {
         return NextResponse.json(
-          { error: `No tienes creditos suficientes para cambiar el avatar` },
+          { error: `No tienes creditos suficientes para cambiar el avatar.` },
           { status: 400 }
         );
       }
@@ -105,7 +109,8 @@ export async function POST(request: Request) {
       await writeAvatarMap(avatarMap);
     } catch (writeError: any) {
       if (requiresPayment) {
-        await authPool.query('UPDATE account SET dp = dp + ? WHERE id = ?', [AVATAR_CHANGE_COST_DP, accountId]);
+        // Rollback
+        await authPool.query(`UPDATE account SET ${curr} = ${curr} + ? WHERE id = ?`, [cost, accountId]);
       }
       throw writeError;
     }
@@ -115,8 +120,9 @@ export async function POST(request: Request) {
       selectedAvatar: nextAvatar,
       locked: false,
       editableAlways,
-      chargedDp: requiresPayment ? AVATAR_CHANGE_COST_DP : 0,
-      changeCostDp: AVATAR_CHANGE_COST_DP,
+      chargedAmount: requiresPayment ? cost : 0,
+      chargedCurrency: requiresPayment ? curr : null,
+      changeCostDp: 1, // just legacy UI compatibility
     });
   } catch (error: any) {
     return NextResponse.json({ error: 'Error saving avatar', details: error.message }, { status: 500 });

@@ -79,20 +79,15 @@ type PurchaseHistoryRow = {
 // ...existing code...
 
 export default function Dashboard() {
-    // Handler for avatar unlock button
-    const handleUnlockAvatar = (currency: 'vp' | 'dp') => {
-      handleUnlockConfirm(currency);
-    };
   const [unlockCurrency, setUnlockCurrency] = useState<'vp' | 'dp' | null>(null);
   const [showUnlockConfirm, setShowUnlockConfirm] = useState(false);
 
-  // Handler to trigger unlock confirmation modal
-  const handleUnlockConfirm = (currency: 'vp' | 'dp') => {
+  const handleUnlockAvatar = (currency: 'vp' | 'dp') => {
     setUnlockCurrency(currency);
     setShowUnlockConfirm(true);
   };
-      const [avatarUnlocked, setAvatarUnlocked] = useState(false);
-    const [globalError, setGlobalError] = useState<string | null>(null);
+
+  const [globalError, setGlobalError] = useState<string | null>(null);
   const router = useRouter();
   const [user, setUser] = useState<DashboardUser | null>(null);
   const [characters, setCharacters] = useState<DashboardCharacter[]>([]);
@@ -126,10 +121,7 @@ export default function Dashboard() {
   const getClassIconSrc = (classId: number) => classIconMap[classId] || '/clases/warrior.png';
 
   useEffect(() => {
-            // Detectar si el usuario ya hizo el primer cambio gratis
-            if (avatarEditableAlways && !avatarUnlocked) {
-              setAvatarUnlocked(true);
-            }
+
         // Captura errores globales del cliente
         const handleGlobalError = (event: ErrorEvent) => {
           setGlobalError('Ocurrió un error inesperado en la aplicación. Por favor recarga la página o revisa la consola.');
@@ -337,13 +329,7 @@ export default function Dashboard() {
   const leftColumnAvatars = visibleAvatars.slice(0, midpoint);
   const rightColumnAvatars = visibleAvatars.slice(midpoint);
 
-  const saveAvatarSelection = async () => {
-        // Si es el primer cambio, no requiere pago
-        if (!avatarUnlocked) {
-          setAvatarUnlocked(true);
-          // ...existing code...
-          return;
-        }
+  const saveAvatarSelection = async (currency: 'vp' | 'dp' | 'gratis' = 'gratis') => {
     if (!user || !avatarSelection || savingAvatar || !canEditAvatar) {
       return;
     }
@@ -355,7 +341,7 @@ export default function Dashboard() {
       const response = await fetch('/api/avatar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accountId: user.id, avatar: avatarSelection }),
+        body: JSON.stringify({ accountId: user.id, avatar: avatarSelection, currency: currency === 'gratis' ? 'dp' : currency }),
       });
 
       const data = await response.json();
@@ -366,12 +352,22 @@ export default function Dashboard() {
       setAvatar(data.selectedAvatar || avatarSelection);
       setAvatarEditableAlways(!!data.editableAlways);
       setAvatarChangeCostDp(Number(data.changeCostDp || 1));
+      
+      // Actualiza el saldo en la UI si se cobró
+      if (data.chargedAmount && data.chargedCurrency) {
+         setPointsData(prev => prev ? { 
+           ...prev, 
+           [data.chargedCurrency]: prev[data.chargedCurrency as 'vp'|'dp'] - data.chargedAmount 
+         } : prev);
+      }
+      
       closeAvatarModal();
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Error al guardar avatar';
       setAvatarModalError(message);
     } finally {
       setSavingAvatar(false);
+      setShowUnlockConfirm(false);
     }
   };
 
@@ -657,11 +653,11 @@ export default function Dashboard() {
                     >
                       No
                     </button>
-                    {/* Si es el primer cambio, solo muestra aplicar */}
-                    {!avatarUnlocked ? (
+                    {/* Si es el primer cambio o tiene cambio libre (GM), solo aplica. 'avatar' indica si ya tiene uno registrado */}
+                    {!avatar || avatarEditableAlways ? (
                       <button
                         type="button"
-                        onClick={saveAvatarSelection}
+                        onClick={() => saveAvatarSelection('gratis')}
                         disabled={savingAvatar || !canEditAvatar}
                         className="h-10 min-w-[140px] px-4 rounded-xl border border-cyan-200/40 bg-cyan-400/20 text-cyan-100 hover:bg-cyan-400/30 text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
                       >
@@ -675,7 +671,7 @@ export default function Dashboard() {
                           onClick={() => handleUnlockAvatar('vp')}
                           disabled={!pointsData || pointsData.vp < AVATAR_UNLOCK_VP || savingAvatar}
                         >
-                          Usar 30 VP (tiempo de juego)
+                          Usar 30VP de juego
                         </button>
                         <button
                           type="button"
@@ -683,15 +679,16 @@ export default function Dashboard() {
                           onClick={() => handleUnlockAvatar('dp')}
                           disabled={!pointsData || pointsData.dp < AVATAR_UNLOCK_DP || savingAvatar}
                         >
-                          Usar 1 DP (Miikii Coins)
+                          Usar 1 credito
                         </button>
                       </>
                     )}
+                                  {showUnlockConfirm && (  
                                   <div className="mb-4 rounded-xl border border-amber-200/25 bg-amber-500/10 px-4 py-3 flex flex-col gap-3">
                                     <div className="flex items-center gap-2 text-sm text-amber-100 font-semibold">
                                       <Check className="w-5 h-5" />
                                       <span>
-                                        ¿Seguro que quieres desbloquear el cambio libre de avatar usando {unlockCurrency === 'vp' ? '30 VP (tiempo de juego)' : '1 DP (Miikii Coins)'}?
+                                        ¿Seguro que quieres cambiar tu avatar por {unlockCurrency === 'vp' ? '30 VP (tiempo de juego)' : '1 DP (Miikii Coins)'}?
                                       </span>
                                     </div>
                                     <div className="flex items-center gap-2">
@@ -704,39 +701,17 @@ export default function Dashboard() {
                                       </button>
                                       <button
                                         type="button"
-                                        onClick={async () => {
-                                          setShowUnlockConfirm(false);
-                                          if (!user || !unlockCurrency || savingAvatar) return;
-                                          setSavingAvatar(true);
-                                          try {
-                                            const response = await fetch(`/api/account/unlock-avatar`, {
-                                              method: 'POST',
-                                              headers: { 'Content-Type': 'application/json' },
-                                              body: JSON.stringify({ accountId: user.id, currency: unlockCurrency }),
-                                            });
-                                            const data = await response.json();
-                                            if (!response.ok) {
-                                              setAvatarModalError(data.error || 'Error al desbloquear avatar');
-                                              return;
-                                            }
-                                            setAvatarUnlocked(true);
-                                            // Actualiza el saldo inmediatamente
-                                            setPointsData((prev) => prev ? { ...prev, [unlockCurrency]: prev[unlockCurrency] - (unlockCurrency === 'dp' ? AVATAR_UNLOCK_DP : AVATAR_UNLOCK_VP) } : prev);
-                                          } catch (error) {
-                                            setAvatarModalError('Error al desbloquear avatar');
-                                          } finally {
-                                            setSavingAvatar(false);
-                                          }
-                                        }}
+                                        onClick={() => saveAvatarSelection(unlockCurrency!)}
                                         disabled={savingAvatar || !pointsData || pointsData[unlockCurrency || 'dp'] < (unlockCurrency === 'dp' ? AVATAR_UNLOCK_DP : AVATAR_UNLOCK_VP)}
                                         className="h-10 min-w-[140px] px-4 rounded-xl border border-amber-200/40 bg-amber-400/20 text-amber-100 hover:bg-amber-400/30 text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
                                       >
-                                        Sí, desbloquear
+                                        Sí, confirmar
                                       </button>
                                     </div>
                                   </div>
+                                  )}
                   </div>
-                  {avatarUnlocked && (
+                  {avatar && !avatarEditableAlways && (
                     <p className="text-xs text-gray-400 mt-2">Elige la moneda que prefieres gastar. VP se gana por tiempo de juego, DP se obtiene por donaciones.</p>
                   )}
                 </div>
