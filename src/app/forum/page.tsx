@@ -1,9 +1,19 @@
+
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+// Status filter options
+const STATUS_FILTERS = [
+  { id: 'all', label: 'Todos' },
+  { id: 'pending', label: 'Pendiente' },
+  { id: 'review', label: 'En revisión' },
+  { id: 'solved', label: 'Solucionado' },
+  { id: 'active', label: 'Activo' },
+];
+
+import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { MessageSquare, Pin, Lock, PlusCircle, ChevronRight, Users, Clock, Globe, Wrench, BookOpen, Shield, AlertOctagon, Megaphone, Lightbulb, LifeBuoy, Sparkles, Search, SlidersHorizontal } from 'lucide-react';
+import { MessageSquare, Pin, Lock, PlusCircle, ChevronRight, Users, Clock, Globe, Wrench, BookOpen, Shield, AlertTriangle, Edit2, Trash2, CornerUpLeft, AlertOctagon, Megaphone, Lightbulb, LifeBuoy, Sparkles, Search, SlidersHorizontal } from 'lucide-react';
 import Image from 'next/image';
 
 type Topic = {
@@ -15,75 +25,78 @@ type Topic = {
   completed: boolean;
   views: number;
   created_at: string;
-  last_reply_at: string | null;
-  comment_count: number;
-  author: { id: number; username: string; avatar: string | null; role: string };
 };
 
-type RealmStats = {
-  totalAccounts: number;
-  totalCharacters: number;
-};
 
-type TopicStatusFilter = 'all' | 'pending' | 'review' | 'solved' | 'active';
-type TopicSort = 'latest' | 'popular' | 'replies';
 
-const CATEGORIES = [
-  { id: 'all',           label: 'Inicio',           desc: 'Bienvenida y visión general del foro',            color: 'from-purple-700 to-indigo-700',    border: 'border-purple-600/50',  text: 'text-purple-300'  },
-  { id: 'announcements', label: 'Anuncios',         desc: 'Solo staff: novedades y avisos oficiales',       color: 'from-fuchsia-800 to-purple-700',   border: 'border-fuchsia-500/50', text: 'text-fuchsia-300' },
-  { id: 'general',       label: 'General',          desc: 'Noticias, eventos y conversación general',        color: 'from-purple-800 to-purple-600',    border: 'border-purple-600/50',  text: 'text-purple-300'  },
-  { id: 'support',       label: 'Soporte Técnico',  desc: '¿Problemas con cliente o cuenta? Te ayudamos',    color: 'from-rose-900 to-purple-800',      border: 'border-rose-600/50',    text: 'text-rose-300'    },
-  { id: 'reports',       label: 'Denuncias',        desc: 'Reportes con pruebas para mantener orden',        color: 'from-red-900 to-rose-800',         border: 'border-red-600/50',     text: 'text-red-300'     },
-  { id: 'guild',         label: 'Hermandades',      desc: 'Reclutamiento y anuncios de hermandad',           color: 'from-amber-900/70 to-purple-800',  border: 'border-amber-600/50',   text: 'text-amber-300'   },
-  { id: 'guides',        label: 'Guías de Clase',   desc: 'Builds, rotaciones y consejos para 3.3.5a',       color: 'from-cyan-900 to-purple-800',      border: 'border-cyan-600/50',    text: 'text-cyan-300'    },
-  { id: 'suggestions',   label: 'Sugerencias',      desc: 'Feedback y propuestas para hacer crecer el server', color: 'from-emerald-900 to-teal-800',   border: 'border-emerald-600/50', text: 'text-emerald-300' },
-];
 
-const CATEGORY_ICONS: Record<string, React.ReactNode> = {
-  announcements: <Megaphone    className="w-5 h-5" />,
-  general: <Globe        className="w-5 h-5" />,
-  support: <Wrench       className="w-5 h-5" />,
-  guides:  <BookOpen     className="w-5 h-5" />,
-  guild:   <Shield       className="w-5 h-5" />,
-  reports: <AlertOctagon className="w-5 h-5" />,
-  suggestions: <Lightbulb className="w-5 h-5" />,
-};
 
-const SUPPORT_TEMPLATE = `Plantilla recomendada:\n- Problema:\n- Pasos para reproducir:\n- Resultado esperado:\n- Resultado actual:\n- ID de misión/objeto/NPC (si aplica):`;
 
-const REPORT_TEMPLATE = `Plantilla obligatoria:\n- Personaje afectado:\n- Personaje reportado:\n- Evidencia links imagen o video:\n- Descripción breve:`;
 
-function inferTopicTag(topic: Topic): { label: string; style: string } {
-  const t = topic.title.toLowerCase();
 
-  if (topic.completed || t.includes('solucionado') || t.includes('[ok]')) {
-    return { label: 'SOLUCIONADO', style: 'border-emerald-700/50 text-emerald-300 bg-emerald-900/20' };
-  }
-  if (t.includes('revision') || t.includes('revisión') || t.includes('investigando')) {
-    return { label: 'EN REVISION', style: 'border-amber-700/50 text-amber-300 bg-amber-900/20' };
-  }
-  if (topic.category === 'support' || topic.category === 'reports' || topic.category === 'suggestions') {
-    return { label: 'PENDIENTE', style: 'border-rose-700/50 text-rose-300 bg-rose-900/20' };
-  }
 
-  return { label: 'ACTIVO', style: 'border-cyan-700/50 text-cyan-300 bg-cyan-900/20' };
-}
 
-function timeAgo(dateStr: string): string {
-  const diff = (Date.now() - new Date(dateStr).getTime()) / 1000;
-  if (diff < 60)    return 'ahora mismo';
-  if (diff < 3600)  return `hace ${Math.floor(diff / 60)}m`;
-  if (diff < 86400) return `hace ${Math.floor(diff / 3600)}h`;
-  return `hace ${Math.floor(diff / 86400)}d`;
-}
 
 export default function ForumPage() {
-  const router = useRouter();
-  const [topics, setTopics] = useState<Topic[]>([]);
+    const router = useRouter();
+  // --- MISSING STATE AND CONSTANTS ---
+  // Category and UI state
   const [activeCategory, setActiveCategory] = useState('all');
-  const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState<{ id: number; username: string } | null>(null);
   const [showNewTopic, setShowNewTopic] = useState(false);
+  const [user, setUser] = useState<any>(null);
+  const [topics, setTopics] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  // Category definitions (example, adjust as needed)
+  const CATEGORIES = [
+    { id: 'all', label: 'Todos', desc: 'Todos los temas', color: 'from-purple-700 to-indigo-700', border: 'border-purple-700', text: 'text-purple-300' },
+    { id: 'announcements', label: 'Anuncios', desc: 'Novedades oficiales', color: 'from-fuchsia-700 to-fuchsia-900', border: 'border-fuchsia-700', text: 'text-fuchsia-300' },
+    { id: 'general', label: 'General', desc: 'Discusión general', color: 'from-purple-700 to-indigo-700', border: 'border-purple-700', text: 'text-purple-300' },
+    { id: 'support', label: 'Soporte', desc: 'Ayuda y soporte', color: 'from-rose-700 to-rose-900', border: 'border-rose-700', text: 'text-rose-300' },
+    { id: 'guides', label: 'Guías', desc: 'Guías y tutoriales', color: 'from-cyan-700 to-cyan-900', border: 'border-cyan-700', text: 'text-cyan-300' },
+    { id: 'reports', label: 'Reportes', desc: 'Reporta bugs', color: 'from-red-700 to-red-900', border: 'border-red-700', text: 'text-red-300' },
+    { id: 'suggestions', label: 'Sugerencias', desc: 'Ideas y sugerencias', color: 'from-emerald-700 to-emerald-900', border: 'border-emerald-700', text: 'text-emerald-300' },
+  ];
+  // Category icons (example, adjust as needed)
+  const CATEGORY_ICONS: Record<string, React.ReactNode> = {
+    all: <Globe className="w-5 h-5" />,
+    announcements: <Megaphone className="w-5 h-5" />,
+    general: <BookOpen className="w-5 h-5" />,
+    support: <LifeBuoy className="w-5 h-5" />,
+    guides: <Lightbulb className="w-5 h-5" />,
+    reports: <AlertOctagon className="w-5 h-5" />,
+    suggestions: <Sparkles className="w-5 h-5" />
+  };
+
+  // Templates
+  const SUPPORT_TEMPLATE = 'Describe tu problema, pasos para reproducirlo, y adjunta evidencia.';
+  const REPORT_TEMPLATE = 'Describe el bug, incluye IDs, pasos y evidencia.';
+
+  // Types
+  type TopicStatusFilter = 'all' | 'pending' | 'review' | 'solved' | 'active';
+  type TopicSort = 'latest' | 'popular' | 'replies';
+  interface RealmStats { totalAccounts: number; totalCharacters: number; }
+
+  // Utility function (placeholder)
+  function inferTopicTag(topic: any) {
+    // Example logic, adjust as needed
+    if (topic.completed) return { label: 'SOLUCIONADO', style: 'border-emerald-700/40 text-emerald-300' };
+    if (topic.locked) return { label: 'EN REVISION', style: 'border-amber-700/40 text-amber-300' };
+    if (topic.pinned) return { label: 'ACTIVO', style: 'border-cyan-700/40 text-cyan-300' };
+    return { label: 'PENDIENTE', style: 'border-gray-700/40 text-gray-300' };
+  }
+
+  // Utility function (placeholder)
+  function timeAgo(dateString: string) {
+    // Simple time ago, adjust as needed
+    const date = new Date(dateString);
+    const now = new Date();
+    const diff = Math.floor((now.getTime() - date.getTime()) / 1000);
+    if (diff < 60) return `${diff}s`;
+    if (diff < 3600) return `${Math.floor(diff/60)}m`;
+    if (diff < 86400) return `${Math.floor(diff/3600)}h`;
+    return `${Math.floor(diff/86400)}d`;
+  }
   const [newTitle, setNewTitle]     = useState('');
   const [newCategory, setNewCategory] = useState('general');
   const [realmStats, setRealmStats] = useState<RealmStats | null>(null);
@@ -353,19 +366,7 @@ export default function ForumPage() {
                   placeholder="Buscar tema o autor"
                   className="w-full h-10 pl-9 pr-3 rounded-xl bg-black/50 border border-purple-900/40 text-sm text-white placeholder:text-gray-500 focus:outline-none focus:border-purple-500/60"
                 />
-              </div>
-            </div>
-
-            <div>
-              <p className="text-[10px] uppercase tracking-[0.2em] font-black text-cyan-300 mb-2">Estado</p>
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  { id: 'all', label: 'Todos' },
-                  { id: 'pending', label: 'Pendiente' },
-                  { id: 'review', label: 'En revisión' },
-                  { id: 'solved', label: 'Solucionado' },
-                  { id: 'active', label: 'Activo' },
-                ].map((item) => (
+                {STATUS_FILTERS.map((item) => (
                   <button
                     key={item.id}
                     type="button"

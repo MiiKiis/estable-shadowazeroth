@@ -22,6 +22,7 @@ import {
 import DarDpAdminForm from './DarDpAdminForm';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
+// Profesiones WoW
 const PROFESSIONS_LIST = [
   { id: 171, name: 'Alquimia' },
   { id: 164, name: 'Herrería' },
@@ -37,6 +38,20 @@ const PROFESSIONS_LIST = [
   { id: 356, name: 'Pesca' },
   { id: 185, name: 'Cocina' },
   { id: 129, name: 'Primeros Auxilios' },
+];
+
+// Clases WoW para selección de tier PvE
+const CLASSES = [
+  { id: 1, name: 'Guerrero', color: '#C79C6E' },
+  { id: 2, name: 'Paladín', color: '#F58CBA' },
+  { id: 3, name: 'Cazador', color: '#ABD473' },
+  { id: 4, name: 'Pícaro', color: '#FFF569' },
+  { id: 5, name: 'Sacerdote', color: '#FFFFFF' },
+  { id: 6, name: 'Caballero de la Muerte', color: '#C41F3B' },
+  { id: 7, name: 'Chamán', color: '#0070DE' },
+  { id: 8, name: 'Mago', color: '#69CCF0' },
+  { id: 9, name: 'Brujo', color: '#9482C9' },
+  { id: 11, name: 'Druida', color: '#FF7D0A' },
 ];
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -753,7 +768,7 @@ export default function AdminShopPage() {
                     <option value="legendario">Legendario</option>
                   </select>
                 </div>
-                {/* Subcategory / Tier dynamic picker */}
+                {/* Subcategory / Tier dynamic picker + Clase PvE */}
                 <div>
                   <label className="block text-xs text-gray-400 mb-1 font-semibold uppercase tracking-wider">
                      {newItem.category === 'pve' ? 'Tier PvE (1-9)' : 
@@ -817,6 +832,45 @@ export default function AdminShopPage() {
                       <option value="70">Nivel 70</option>
                       <option value="80">Nivel 80</option>
                     </select>
+                  ) : newItem.category === 'pve' ? (
+                    <>
+                      <input
+                        type="number"
+                        min={1} max={9}
+                        value={newItem.tier}
+                        onChange={e => setNewItem(p => ({ ...p, tier: e.target.value }))}
+                        className="w-full bg-[#03060d]/80 border border-purple-500/30 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-cyan-400/60 mb-2"
+                        placeholder="Ej: 8"
+                      />
+                      <div className="mt-2">
+                        <label className="block text-xs text-gray-400 mb-1 font-semibold uppercase tracking-wider">Clases permitidas</label>
+                        <div className="flex flex-wrap gap-2">
+                          {CLASSES.map(cls => {
+                            const checked = (Number(newItem.classMask) & (1 << (cls.id - 1))) !== 0;
+                            return (
+                              <label key={cls.id} className="flex items-center gap-1 px-2 py-1 rounded-lg border-2 text-xs font-bold cursor-pointer" style={{ borderColor: cls.color, color: checked ? '#fff' : cls.color, background: checked ? cls.color + '22' : 'transparent' }}>
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={e => {
+                                    let mask = Number(newItem.classMask) || 0;
+                                    if (e.target.checked) {
+                                      mask |= (1 << (cls.id - 1));
+                                    } else {
+                                      mask &= ~(1 << (cls.id - 1));
+                                    }
+                                    setNewItem(p => ({ ...p, classMask: String(mask) }));
+                                  }}
+                                  className="accent-cyan-500 mr-1"
+                                />
+                                {cls.name}
+                              </label>
+                            );
+                          })}
+                        </div>
+                        <div className="text-xs text-gray-500 mt-1">Puedes seleccionar varias clases. Si no seleccionas ninguna, será para todas.</div>
+                      </div>
+                    </>
                   ) : (
                     <input
                       type="number"

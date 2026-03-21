@@ -30,7 +30,7 @@ export default function StaffPage() {
     },
     {
       id: 4,
-      name: 'Soporte Técnico',
+      name: 'Reporte de Errores',
       role: 'Tech Support',
       description: 'Asiste con problemas técnicos y configuración',
       icon: Users,

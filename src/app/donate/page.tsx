@@ -1,6 +1,23 @@
 'use client';
 
 import { Sparkles, CreditCard, Gift, TrendingUp, X, Shield, ShoppingCart, CheckCircle2, AlertTriangle, Search, Users, Heart, Zap } from 'lucide-react';
+import ShopFilters from '@/components/ShopFilters';
+import dynamic from 'next/dynamic';
+// Importa KitItemList de forma dinámica para evitar problemas SSR
+const KitItemList = dynamic(() => import('@/components/KitItemList'), { ssr: false });
+// Modal simple reutilizable
+function Modal({ open, onClose, children }: { open: boolean, onClose: () => void, children: React.ReactNode }) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+      <div className="bg-[#18192a] rounded-2xl shadow-2xl p-6 max-w-lg w-full relative border-2 border-purple-700">
+        <button onClick={onClose} className="absolute top-3 right-3 text-purple-300 hover:text-white bg-black/30 rounded-full p-2"><X className="w-5 h-5" /></button>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
@@ -108,9 +125,10 @@ export default function DonatePage() {
   const [user, setUser] = useState<{ id: number; username: string } | null>(null);
   const [characters, setCharacters] = useState<CharacterOption[]>([]);
   const [shopItems, setShopItems] = useState<ShopItem[]>([]);
-  const [shopCategory, setShopCategory] = useState<string>('all');
-  const [shopTier, setShopTier] = useState<number>(0);
-  const [shopClassFilter, setShopClassFilter] = useState<number>(0);
+  // Filtros en cascada dependientes
+  const [shopCategory, setShopCategory] = useState<string | null>(null);
+  const [shopTier, setShopTier] = useState<number | null>(null);
+  const [shopClassFilter, setShopClassFilter] = useState<number | null>(null);
   const [transmogTypeFilter, setTransmogTypeFilter] = useState<'all' | 'arma' | 'armadura'>('all');
   const [transmogLevelFilter, setTransmogLevelFilter] = useState<0 | 60 | 70>(0);
   const [professionFilter, setProfessionFilter] = useState<string>('all');
@@ -132,6 +150,10 @@ export default function DonatePage() {
   // Definir activeTab para evitar error
   const [activeTab, setActiveTab] = useState<'rewards' | 'donations'>('rewards');
   const [targetAccountId, setTargetAccountId] = useState<string>('');
+
+  // Estado para modal de kit (debe ir aquí, dentro del cuerpo del componente)
+  const [openKitModal, setOpenKitModal] = useState(false);
+  const [activeKitId, setActiveKitId] = useState<number | null>(null);
 
   const handleStripeCheckout = async () => {
     if (!user || !selectedDonation) return;
@@ -167,15 +189,22 @@ export default function DonatePage() {
     202: 51306, // Ingeniería
     182: 50300, // Herboristería
     773: 51311, // Inscripción
-    755: 51311, // Jewelcrafting
-    165: 51302, // Peletería
-    186: 50310, // Minería
-    393: 50305, // Desuello
-    197: 51309, // Sastrería
-    356: 51294, // Pesca
-    185: 51296, // Cocina
-    129: 45542, // Primeros Auxilios
   };
+
+
+  // Handler seguro para evitar stack overflow
+  function handleMouseLeave(e: React.MouseEvent<HTMLDivElement>) {
+    try {
+      const link = e.currentTarget.querySelector('a[data-wowhead]');
+      if (link && !link.hasAttribute('data-mouseout-dispatched')) {
+        link.setAttribute('data-mouseout-dispatched', '1');
+        link.dispatchEvent(new MouseEvent('mouseout', { bubbles: true }));
+        setTimeout(() => link.removeAttribute('data-mouseout-dispatched'), 100);
+      }
+    } catch (err) {
+      // Silenciar cualquier error inesperado
+    }
+  }
 
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
@@ -324,25 +353,20 @@ export default function DonatePage() {
     }
   };
 
+  // Nuevo filtrado dependiente
   const filteredShopItems = shopItems.filter(item => {
     const itemCat = item.category || 'misc';
-
-    if (shopCategory !== 'all' && itemCat !== shopCategory) return false;
-
-    // We reuse `shopTier` as a universal sub-filter parameter for ease of state management
-    if (shopTier !== 0) {
-      if (shopCategory === 'pve' && (item.tier ?? 0) !== shopTier) return false;
-      if (shopCategory === 'monturas' && (item.tier ?? 0) !== shopTier) return false;
-      if (shopCategory === 'transmo' && (item.tier ?? 0) !== shopTier) return false;
-      if (shopCategory === 'boost' && (item.tier ?? 0) !== shopTier) return false;
-      if (shopCategory === 'profesiones' && (item.tier ?? 0) !== shopTier) return false;
+    if (!shopCategory) return false;
+    if (itemCat !== shopCategory) return false;
+    if (shopCategory === 'pve') {
+      if (!shopTier) return false;
+      if ((item.tier ?? 0) !== shopTier) return false;
+      if (shopClassFilter && item.class_mask !== undefined && item.class_mask > 0) {
+        if (!(item.class_mask & shopClassFilter)) return false;
+      } else if (shopClassFilter) {
+        return false;
+      }
     }
-
-    if (shopClassFilter !== 0) {
-      const mask = item.class_mask ?? 0;
-      if (mask !== 0 && !(mask & shopClassFilter)) return false;
-    }
-
     return true;
   });
 
@@ -585,81 +609,13 @@ export default function DonatePage() {
                 </div>
               )}
 
-              {/* Category filters */}
-              <div className="flex flex-wrap gap-2 mb-4">
-                {SHOP_CATEGORIES.map(cat => (
-                  <button
-                    key={cat.id}
-                    onClick={() => { setShopCategory(cat.id); setShopTier(0); setShopClassFilter(0); }}
-                    className={`px-4 py-2 rounded-xl text-sm font-bold border transition-all ${shopCategory === cat.id ? 'bg-purple-700 border-purple-500 text-white' : 'bg-black/30 border-purple-700/30 text-gray-400 hover:text-white'}`}
-                  >{cat.label}</button>
-                ))}
-              </div>
-
-              {/* Sub-filters: PvE tiers */}
-              {/* Sub-filters logic mapping */}
-              {shopCategory === 'pve' && (
-                <div className="flex flex-wrap gap-2 mb-4">
-                  {[0,1,2,3,4,5,6,7,8,9].map(t => (
-                    <button key={t} onClick={() => setShopTier(t)} className={`px-4 py-2 rounded-lg text-sm font-bold border transition-colors ${shopTier === t ? 'bg-yellow-600 border-yellow-500 text-white shadow-[0_0_10px_rgba(202,138,4,0.5)]' : 'bg-black/30 border-gray-600 text-gray-400 hover:text-white hover:border-gray-400'}`}>
-                      {t === 0 ? 'Todos los Tiers' : `Tier ${t}`}
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {shopCategory === 'profesiones' && (
-                <div className="flex flex-wrap gap-2 mb-4">
-                  <button onClick={() => setShopTier(0)} className={`px-4 py-2 rounded-lg text-sm font-bold border transition-colors ${shopTier === 0 ? 'bg-emerald-600 border-emerald-500 text-white' : 'bg-black/30 border-gray-600 text-gray-400'}`}>Todas</button>
-                  {/* Map index as tier (1 to 12) for professions */}
-                  {PROFESSIONS.filter(p => p !== 'all').map((prof, idx) => {
-                    const t = idx + 1; // 1 to length
-                    return (
-                    <button key={t} onClick={() => setShopTier(t)} className={`px-4 py-2 rounded-lg text-sm font-bold border transition-colors ${shopTier === t ? 'bg-emerald-600 border-emerald-500 text-white shadow-[0_0_10px_rgba(16,185,129,0.5)]' : 'bg-black/30 border-gray-600 text-gray-400 hover:text-white hover:border-gray-400'}`}>
-                      {prof.charAt(0).toUpperCase() + prof.slice(1)}
-                    </button>
-                  )})}
-                </div>
-              )}
-
-              {shopCategory === 'monturas' && (
-                <div className="flex flex-wrap gap-2 mb-4">
-                  <button onClick={() => setShopTier(0)} className={`px-4 py-2 rounded-lg text-sm font-bold border ${shopTier === 0 ? 'bg-blue-600 border-blue-500 text-white' : 'bg-black/30 border-gray-600 text-gray-400'}`}>Todas</button>
-                  <button onClick={() => setShopTier(1)} className={`px-4 py-2 rounded-lg text-sm font-bold border ${shopTier === 1 ? 'bg-blue-600 border-blue-500 text-white' : 'bg-black/30 border-gray-600 text-gray-400'}`}>Terrestres</button>
-                  <button onClick={() => setShopTier(2)} className={`px-4 py-2 rounded-lg text-sm font-bold border ${shopTier === 2 ? 'bg-blue-600 border-blue-500 text-white' : 'bg-black/30 border-gray-600 text-gray-400'}`}>Voladoras</button>
-                </div>
-              )}
-
-              {shopCategory === 'transmo' && (
-                <div className="flex flex-wrap gap-2 mb-4">
-                  <button onClick={() => setShopTier(0)} className={`px-4 py-2 rounded-lg text-sm font-bold border ${shopTier === 0 ? 'bg-fuchsia-600 border-fuchsia-500 text-white' : 'bg-black/30 border-gray-600 text-gray-400'}`}>Todos</button>
-                  <button onClick={() => setShopTier(1)} className={`px-4 py-2 rounded-lg text-sm font-bold border ${shopTier === 1 ? 'bg-fuchsia-600 border-fuchsia-500 text-white' : 'bg-black/30 border-gray-600 text-gray-400'}`}>Tela</button>
-                  <button onClick={() => setShopTier(2)} className={`px-4 py-2 rounded-lg text-sm font-bold border ${shopTier === 2 ? 'bg-fuchsia-600 border-fuchsia-500 text-white' : 'bg-black/30 border-gray-600 text-gray-400'}`}>Cuero</button>
-                  <button onClick={() => setShopTier(3)} className={`px-4 py-2 rounded-lg text-sm font-bold border ${shopTier === 3 ? 'bg-fuchsia-600 border-fuchsia-500 text-white' : 'bg-black/30 border-gray-600 text-gray-400'}`}>Malla</button>
-                  <button onClick={() => setShopTier(4)} className={`px-4 py-2 rounded-lg text-sm font-bold border ${shopTier === 4 ? 'bg-fuchsia-600 border-fuchsia-500 text-white' : 'bg-black/30 border-gray-600 text-gray-400'}`}>Placas</button>
-                  <button onClick={() => setShopTier(5)} className={`px-4 py-2 rounded-lg text-sm font-bold border ${shopTier === 5 ? 'bg-fuchsia-600 border-fuchsia-500 text-white' : 'bg-black/30 border-gray-600 text-gray-400'}`}>Armas/Otros</button>
-                </div>
-              )}
-
-              {shopCategory === 'boost' && (
-                <div className="flex flex-wrap gap-2 mb-4">
-                  <button onClick={() => setShopTier(0)} className={`px-4 py-2 rounded-lg text-sm font-bold border ${shopTier === 0 ? 'bg-orange-600 border-orange-500 text-white' : 'bg-black/30 border-gray-600 text-gray-400'}`}>Todos</button>
-                  <button onClick={() => setShopTier(60)} className={`px-4 py-2 rounded-lg text-sm font-bold border ${shopTier === 60 ? 'bg-orange-600 border-orange-500 text-white' : 'bg-black/30 border-gray-600 text-gray-400'}`}>Insta Nivel 60</button>
-                  <button onClick={() => setShopTier(70)} className={`px-4 py-2 rounded-lg text-sm font-bold border ${shopTier === 70 ? 'bg-orange-600 border-orange-500 text-white' : 'bg-black/30 border-gray-600 text-gray-400'}`}>Insta Nivel 70</button>
-                  <button onClick={() => setShopTier(80)} className={`px-4 py-2 rounded-lg text-sm font-bold border ${shopTier === 80 ? 'bg-orange-600 border-orange-500 text-white' : 'bg-black/30 border-gray-600 text-gray-400'}`}>Insta Nivel 80</button>
-                </div>
-              )}
-
-              {/* Class filter */}
-              <div className="flex flex-wrap gap-2 mb-6">
-                {WOW_CLASSES.map(cls => (
-                  <button
-                    key={cls.mask}
-                    onClick={() => setShopClassFilter(shopClassFilter === cls.mask ? 0 : cls.mask)}
-                    style={{ borderColor: shopClassFilter === cls.mask ? cls.color : undefined, color: shopClassFilter === cls.mask ? cls.color : undefined }}
-                    className={`px-3 py-1.5 rounded-lg text-sm font-bold border transition-all ${shopClassFilter === cls.mask ? 'bg-black/80 shadow-[0_0_8px_currentColor]' : 'bg-black/30 border-gray-700 text-gray-400 hover:bg-black/50 hover:border-gray-500'}`}
-                  >{cls.name}</button>
-                ))}
+              {/* Filtros en cascada dependientes */}
+              <div className="mb-6">
+                <ShopFilters onFilter={({ category, tier, classId }) => {
+                  setShopCategory(category);
+                  setShopTier(tier);
+                  setShopClassFilter(classId);
+                }} />
               </div>
 
               {/* Items grid */}
@@ -680,16 +636,12 @@ export default function DonatePage() {
                     };
                     const borderColor = qualityColors[item.quality] || '#555';
                     const isPurchasing = purchasingItemId === item.id;
+                    const isKit = item.service_type === 'bundle';
                     return (
                       <div
                         key={item.id}
                         style={{ borderColor }}
-                        onMouseLeave={(e) => {
-                          const link = e.currentTarget.querySelector('a[data-wowhead]');
-                          if (link) {
-                            link.dispatchEvent(new MouseEvent('mouseout', { bubbles: true }));
-                          }
-                        }}
+                        onMouseLeave={handleMouseLeave}
                         className="relative flex flex-col items-center bg-[#060a13]/90 rounded-2xl border-2 p-4 hover:scale-105 transition-all duration-200 group cursor-default"
                       >
                         <div className="flex-1 w-full space-y-4">
@@ -763,8 +715,18 @@ export default function DonatePage() {
                           </a>
 
                           <p className="text-[11px] text-gray-400 leading-relaxed italic opacity-70">
-                            Previsualización rápida del ítem. Haz click en el icono para abrir la ficha completa.
+                            {isKit
+                              ? 'Este kit contiene varios objetos. Haz click en "Ver contenido" para ver la lista completa.'
+                              : 'Previsualización rápida del ítem. Haz click en el icono para abrir la ficha completa.'}
                           </p>
+                                                    {isKit && (
+                                                      <button
+                                                        className="mt-2 px-4 py-2 rounded-lg bg-purple-700 hover:bg-purple-800 text-white font-bold text-xs shadow-lg border border-purple-900/40"
+                                                        onClick={() => { setActiveKitId(item.id); setOpenKitModal(true); }}
+                                                      >
+                                                        Ver contenido
+                                                      </button>
+                                                    )}
                           
                           {item.class_mask !== undefined && Number(item.class_mask) > 0 && (
                             <div className="flex flex-wrap gap-1">
@@ -793,6 +755,11 @@ export default function DonatePage() {
                           )}
                           {isPurchasing ? 'Procesando…' : 'Comprar ahora'}
                         </button>
+                                        {/* Modal de contenido de kit */}
+                                        <Modal open={openKitModal} onClose={() => setOpenKitModal(false)}>
+                                          <h2 className="text-2xl font-black mb-4 text-purple-300">Contenido del Kit</h2>
+                                          {activeKitId && <KitItemList kitId={activeKitId} />}
+                                        </Modal>
                       </div>
                     );
                   })}

@@ -6,6 +6,7 @@ type Currency = 'vp' | 'dp';
 
 type ShopItemRow = {
   id: number;
+  item_id?: number; // Agregado para compatibilidad con queries y uso en el código
   name?: string;
   price: number;
   currency: string;
@@ -67,9 +68,9 @@ async function executeSoapCommand(command: string) {
   const soapUser = process.env.ACORE_SOAP_USER;
   const soapPassword = process.env.ACORE_SOAP_PASSWORD;
 
-  // Keep the API usable even before SOAP is configured.
+  // Validar configuración SOAP
   if (!soapEndpoint || !soapUser || !soapPassword) {
-    return { skipped: true };
+    throw new Error('SOAP no está configurado correctamente. Revisa las variables de entorno: ACORE_SOAP_URL, ACORE_SOAP_USER, ACORE_SOAP_PASSWORD.');
   }
 
   const xml = `<?xml version="1.0" encoding="utf-8"?>
@@ -82,24 +83,63 @@ async function executeSoapCommand(command: string) {
 </SOAP-ENV:Envelope>`;
 
   const auth = Buffer.from(`${soapUser}:${soapPassword}`).toString('base64');
-  const response = await fetch(soapEndpoint, {
-    method: 'POST',
-    headers: {
-      Authorization: `Basic ${auth}`,
-      'Content-Type': 'text/xml; charset=utf-8',
-      SOAPAction: 'executeCommand',
-    },
-    body: xml,
-    cache: 'no-store',
-  });
+  let response;
+  let text = '';
+  try {
+    response = await fetch(soapEndpoint, {
+      method: 'POST',
+      headers: {
+        Authorization: `Basic ${auth}`,
+        'Content-Type': 'text/xml; charset=utf-8',
+        SOAPAction: 'executeCommand',
+      },
+      body: xml,
+      cache: 'no-store',
+    });
+    text = await response.text();
+  } catch (err) {
+    const errorObj = {
+      error: 'No se pudo conectar al servidor SOAP. Revisa que el endpoint esté activo y accesible.',
+      soapCommand: command,
+      soapRequest: xml,
+      soapResponse: null,
+    };
+    throw Object.assign(new Error(errorObj.error), errorObj);
+  }
 
-  const text = await response.text();
   if (!response.ok) {
-    throw new Error(`SOAP HTTP ${response.status}: ${text}`);
+    let userMessage = 'Error al comunicarse con el servidor.';
+    if (response.status === 401 || response.status === 403) {
+      userMessage = 'Permisos insuficientes para ejecutar el comando SOAP. Verifica el usuario y nivel GM.';
+    } else if (response.status === 404) {
+      userMessage = 'Endpoint SOAP no encontrado. Revisa la configuración.';
+    } else if (response.status === 500) {
+      userMessage = 'Error interno del servidor SOAP.';
+    }
+    if (/incorrect|denied|not allowed|no permission|invalid/i.test(text)) {
+      userMessage = text;
+    }
+    const errorObj = {
+      error: userMessage,
+      soapCommand: command,
+      soapRequest: xml,
+      soapResponse: text,
+      httpStatus: response.status,
+    };
+    throw Object.assign(new Error(userMessage), errorObj);
   }
 
   if (/faultcode|SOAP-ENV:Fault|<result>false<\/result>/i.test(text)) {
-    throw new Error(`SOAP command failed: ${text}`);
+    const match = text.match(/<faultstring>(.*?)<\/faultstring>/i);
+    const faultMsg = match ? match[1] : 'Comando SOAP falló.';
+    const errorObj = {
+      error: faultMsg,
+      soapCommand: command,
+      soapRequest: xml,
+      soapResponse: text,
+      httpStatus: response.status,
+    };
+    throw Object.assign(new Error(faultMsg), errorObj);
   }
 
   return { skipped: false };
@@ -268,7 +308,23 @@ export async function POST(request: Request) {
             break;
           case 'level_boost':
             const targetLevel = Number(item.service_data) || 60;
-            await charPool.query('UPDATE characters SET level = ? WHERE guid = ?', [targetLevel, character.guid]);
+            // SOAP: subir nivel usando .levelup NombreDelPersonaje 60 (nuevo comando)
+            await executeSoapCommand(`.levelup ${character.name} ${targetLevel}`);
+            // Si el boost incluye items, envíalos por correo automáticamente
+            if (item.service_data) {
+              try {
+                const data = JSON.parse(item.service_data);
+                if (Array.isArray(data.items)) {
+                  for (const b of data.items) {
+                    await sendSoapItem({
+                      characterName: character.name,
+                      itemEntry: Number(b.id || b.item_id),
+                      itemCount: Number(b.count || 1),
+                    });
+                  }
+                }
+              } catch (e) { /* No items o formato inválido, ignora */ }
+            }
             break;
           case 'gold_pack':
             const goldAmount = Number(item.service_data) || 1000;
@@ -330,6 +386,7 @@ export async function POST(request: Request) {
       await connection.rollback();
     }
 
+    // Log completo para depuración
     console.error('Shop purchase error:', error);
     return NextResponse.json(
       {
@@ -337,6 +394,10 @@ export async function POST(request: Request) {
         details: error.message,
         code: error.code,
         stack: error.stack,
+        soapCommand: error.soapCommand,
+        soapRequest: error.soapRequest,
+        soapResponse: error.soapResponse,
+        httpStatus: error.httpStatus,
       },
       { status: 500 }
     );
