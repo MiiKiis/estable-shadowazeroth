@@ -69,6 +69,9 @@ interface ShopItem {
   soap_item_count: number;
   service_type: string;
   service_data: string | null;
+  faction: string | null;
+  item_level: number;
+  description: string | null;
 }
 
 interface NewItemForm {
@@ -84,6 +87,9 @@ interface NewItemForm {
   soapCount: string;
   serviceType: string;
   serviceData: string;
+  faction: string;
+  itemLevel: string;
+  description: string;
   bundleItems: { id: string; count: string }[];
 }
 
@@ -100,6 +106,9 @@ const EMPTY_ITEM: NewItemForm = {
   soapCount: '1',
   serviceType: 'none',
   serviceData: '',
+  faction: 'all',
+  itemLevel: '0',
+  description: '',
   bundleItems: [{ id: '', count: '1' }],
 };
 
@@ -138,6 +147,7 @@ export default function AdminShopPage() {
   const [error, setError] = useState('');
   const [newItem, setNewItem] = useState<NewItemForm>(EMPTY_ITEM);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // tabs
   const [activeTab, setActiveTab] = useState<AdminTab>('shop');
@@ -283,6 +293,9 @@ export default function AdminShopPage() {
           soapCount: Number(newItem.soapCount) || 1,
           serviceType: finalServiceType,
           serviceData: finalServiceData,
+          faction: newItem.faction || 'all',
+          itemLevel: Number(newItem.itemLevel) || 0,
+          description: newItem.description || '',
         }),
       });
  
@@ -328,6 +341,9 @@ export default function AdminShopPage() {
       soapCount: String(item.soap_item_count),
       serviceType: item.service_type,
       serviceData: item.service_data || '',
+      faction: item.faction || 'all',
+      itemLevel: String(item.item_level || 0),
+      description: item.description || '',
       bundleItems: bundle,
     });
  
@@ -490,7 +506,7 @@ export default function AdminShopPage() {
       </div>
 
       {/* Tabs */}
-      <div className="max-w-6xl mx-auto mb-8 flex gap-2 flex-wrap">
+      <div className="w-full max-w-[1400px] mx-auto px-4 sm:px-8 mb-8 flex gap-2 flex-wrap">
         {tabs.map(tab => (
           <button
             key={tab.id}
@@ -507,7 +523,7 @@ export default function AdminShopPage() {
         ))}
       </div>
 
-      <div className="max-w-6xl mx-auto">
+      <div className="w-full max-w-[1400px] mx-auto px-4 sm:px-8">
         {/* ── SHOP TAB ─────────────────────────────────────────────────────── */}
         {activeTab === 'shop' && (
           <div className="space-y-8">
@@ -530,412 +546,468 @@ export default function AdminShopPage() {
                   </button>
                 )}
               </div>
-              <form onSubmit={handleAdd} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {/* Name */}
-                <div className="lg:col-span-2">
-                  <label className="block text-xs text-gray-400 mb-1 font-semibold uppercase tracking-wider">Nombre *</label>
-                  <input
-                    type="text"
-                    placeholder="Ej: Espada de Fuego"
-                    value={newItem.name}
-                    onChange={e => setNewItem(p => ({ ...p, name: e.target.value }))}
-                    className="w-full bg-[#03060d]/80 border border-purple-500/30 rounded-xl px-4 py-2.5 text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-400/60"
-                    required
-                  />
-                </div>
-                {/* Dynamically expanding Item IDs / Bundle */}
-                <div className="lg:col-span-3 border border-purple-500/20 bg-black/20 p-4 rounded-xl space-y-3">
-                  <div className="flex justify-between items-center mb-1">
-                    <label className="block text-xs text-gray-400 font-semibold uppercase tracking-wider">
-                      {newItem.serviceType === 'none' || newItem.serviceType === 'bundle' ? 'Item ID(s) *' : 'ID Visual / Referencia (Opcional)'}
-                    </label>
-                    {(newItem.serviceType === 'none' || newItem.serviceType === 'bundle') && (
-                      <button 
-                        type="button"
-                        onClick={() => setNewItem(p => ({ ...p, bundleItems: [...p.bundleItems, { id: '', count: '1' }] }))}
-                        className="bg-purple-900/40 hover:bg-purple-600 text-purple-200 font-bold text-[10px] uppercase px-3 py-1.5 rounded-lg transition-colors border border-purple-500/30"
-                      >
-                        + Añadir otro ítem
-                      </button>
-                    )}
-                  </div>
-                  <div className="space-y-2">
-                    {newItem.bundleItems.map((bi, idx) => (
-                      <div key={idx} className="flex gap-2 items-center">
-                        <div className="flex-1">
-                          <input
-                            type="number"
-                            placeholder={newItem.serviceType === 'profession' ? "ID de la Profesión (Ej: 171)" : "Ej: 49623"}
-                            value={bi.id}
-                            onChange={(e) => {
-                              const nb = [...newItem.bundleItems];
-                              nb[idx].id = e.target.value;
-                              setNewItem({ ...newItem, bundleItems: nb });
-                            }}
-                            className="w-full bg-[#03060d]/80 border border-purple-500/30 rounded-lg px-3 py-2.5 text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-400/60"
-                            required={newItem.serviceType === 'none' || newItem.serviceType === 'bundle'}
-                          />
-                        </div>
-                        {(newItem.serviceType === 'none' || newItem.serviceType === 'bundle') && newItem.bundleItems.length > 1 && (
-                          <div className="w-20">
-                            <input
-                              type="number"
-                              title="Cantidad en el pack"
-                              placeholder="Cant."
-                              value={bi.count}
-                              onChange={(e) => {
-                                const nb = [...newItem.bundleItems];
-                                nb[idx].count = e.target.value;
-                                setNewItem({ ...newItem, bundleItems: nb });
-                              }}
-                              className="w-full bg-[#03060d]/80 border border-purple-500/30 rounded-lg px-2 py-2.5 text-white text-center focus:outline-none focus:ring-2 focus:ring-cyan-400/60"
-                              min={1} required
-                            />
-                          </div>
-                        )}
-                        {(newItem.serviceType === 'none' || newItem.serviceType === 'bundle') && newItem.bundleItems.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const nb = [...newItem.bundleItems];
-                              nb.splice(idx, 1);
-                              setNewItem({ ...newItem, bundleItems: nb });
-                            }}
-                            className="text-gray-500 hover:text-red-500 p-2 transition-colors"
-                          >
-                            <X className="w-5 h-5" />
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                {/* Price */}
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1 font-semibold uppercase tracking-wider">Precio *</label>
-                  <input
-                    type="number"
-                    placeholder="Ej: 150"
-                    value={newItem.price}
-                    onChange={e => setNewItem(p => ({ ...p, price: e.target.value }))}
-                    className="w-full bg-[#03060d]/80 border border-purple-500/30 rounded-xl px-4 py-2.5 text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-400/60"
-                    required
-                  />
-                </div>
-                {/* Currency */}
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1 font-semibold uppercase tracking-wider">Moneda</label>
-                  <select
-                    value={newItem.currency}
-                    onChange={e => setNewItem(p => ({ ...p, currency: e.target.value }))}
-                    className="w-full bg-[#03060d]/80 border border-purple-500/30 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-cyan-400/60"
-                  >
-                    <option value="vp">VP</option>
-                    <option value="dp">DP</option>
-                  </select>
-                </div>
-                {/* Category */}
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1 font-semibold uppercase tracking-wider">Categoría</label>
-                  <select
-                    value={newItem.category}
-                    onChange={e => setNewItem(p => ({ ...p, category: e.target.value }))}
-                    className="w-full bg-[#03060d]/80 border border-purple-500/30 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-cyan-400/60"
-                  >
-                    <option value="pve">PvE (Tiers)</option>
-                    <option value="pvp">PvP</option>
-                    <option value="profesiones">Profesiones</option>
-                    <option value="monturas">Monturas y Mascotas</option>
-                    <option value="transmo">Transfiguración</option>
-                    <option value="oro">Oro</option>
-                    <option value="boost">Subida de Nivel</option>
-                    <option value="misc">Otros</option>
-                  </select>
-                </div>
-
-                {/* Service Type */}
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1 font-semibold uppercase tracking-wider">Tipo de Servicio</label>
-                  <select
-                    value={newItem.serviceType}
-                    onChange={e => {
-                      const st = e.target.value;
-                      let cat = newItem.category;
-                      let img = newItem.image;
-                      let sData = newItem.serviceData;
-                      let bItems = newItem.bundleItems;
-                      
-                      // Auto-suggestion for categories and images
-                      if (st === 'gold_pack') { 
-                        cat = 'oro'; 
-                        img = 'inv_misc_coin_02'; 
-                        bItems = [{ id: '', count: '1' }]; 
-                      }
-                      else if (st === 'level_boost') { 
-                        cat = 'boost'; 
-                        img = 'spell_holy_blessingofstrength'; 
-                        bItems = [{ id: '', count: '1' }]; 
-                      }
-                      else if (st === 'profession') { 
-                        cat = 'profesiones'; 
-                        bItems = [{ id: '', count: '1' }]; 
-                      }
-                      else if (st === 'none' || st === 'bundle') {
-                        sData = '';
-                      }
-                      
-                      setNewItem(p => ({ 
-                        ...p, 
-                        serviceType: st, 
-                        category: cat, 
-                        image: img, 
-                        serviceData: sData,
-                        bundleItems: bItems 
-                      }));
-                    }}
-                    className="w-full bg-[#03060d]/80 border border-purple-500/30 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-cyan-400/60"
-                  >
-                    <option value="none">Ninguno (Item estándar)</option>
-                    <option value="name_change">Cambio de Nombre</option>
-                    <option value="race_change">Cambio de Raza</option>
-                    <option value="faction_change">Cambio de Facción</option>
-                    <option value="level_boost">Instant Level Boost</option>
-                    <option value="gold_pack">Pack de Oro (Instant)</option>
-                    <option value="profession">Profesión / Skill (Instant)</option>
-                  </select>
-                </div>
-
-                {/* Service Configuration Wrapper */}
-                {newItem.serviceType !== 'none' && newItem.serviceType !== 'bundle' && (
-                  <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-4 border border-pink-500/20 bg-pink-900/5 p-4 rounded-xl">
-                    <h3 className="md:col-span-2 text-xs font-black text-pink-400 uppercase tracking-widest border-b border-pink-500/10 pb-2 mb-2">
-                       Configuración de Servicio Instantáneo
-                    </h3>
-                    
-                    {newItem.serviceType === 'profession' && (
-                       <div>
-                         <label className="block text-xs text-gray-400 mb-1 font-semibold uppercase tracking-wider">Seleccionar Profesión</label>
-                         <select
-                           value={newItem.bundleItems[0]?.id || ''}
-                           onChange={(e) => {
-                             const tid = e.target.value;
-                             const prof = PROFESSIONS_LIST.find(p => String(p.id) === tid);
-                             // If profession selected, auto-set name if empty
-                             const newName = !newItem.name || PROFESSIONS_LIST.some(p => p.name === newItem.name) ? (prof?.name || '') : newItem.name;
-                             setNewItem(p => ({ ...p, name: newName, bundleItems: [{ id: tid, count: '1' }] }));
-                           }}
-                           className="w-full bg-[#03060d]/80 border border-pink-500/30 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-pink-400/60"
-                         >
-                           <option value="">-- Seleccionar --</option>
-                           {PROFESSIONS_LIST.map(prof => (
-                             <option key={prof.id} value={prof.id}>{prof.name}</option>
-                           ))}
-                         </select>
-                       </div>
-                    )}
-
+                            <form onSubmit={handleAdd} className="space-y-6">
+                {/* ── BLOQUE 1: Información General ── */}
+                <div className="bg-[#03060d]/60 border border-purple-500/20 rounded-2xl p-6 md:p-8 space-y-6">
+                  <h3 className="text-sm font-black text-cyan-400 uppercase tracking-widest border-b border-purple-500/20 pb-2 flex items-center gap-2">
+                    <span className="bg-cyan-900/40 text-cyan-300 w-6 h-6 rounded-full flex items-center justify-center text-xs">1</span>
+                    Información General
+                  </h3>
+                  
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* Name */}
                     <div>
-                      <label className="block text-xs text-gray-400 mb-1 font-semibold uppercase tracking-wider">
-                        {newItem.serviceType === 'level_boost' ? 'Nivel Final (Ej: 80)' :
-                         newItem.serviceType === 'gold_pack' ? 'Cantidad de Oro' :
-                         newItem.serviceType === 'profession' ? 'Nivel de Habilidad (Ej: 450)' :
-                         'Valor del Servicio'}
-                      </label>
+                      <label className="block text-xs text-gray-400 mb-1 font-semibold uppercase tracking-wider">Nombre del Pack o Item *</label>
                       <input
-                        type="number"
-                        placeholder="Ej: 450"
-                        value={newItem.serviceData}
-                        onChange={e => setNewItem(p => ({ ...p, serviceData: e.target.value }))}
-                        className="w-full bg-[#03060d]/80 border border-pink-500/30 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-pink-400/60"
+                        type="text"
+                        placeholder="Ej: Set Furioso de Paladín"
+                        value={newItem.name}
+                        onChange={e => setNewItem(p => ({ ...p, name: e.target.value }))}
+                        className="w-full bg-black/50 border border-purple-500/30 rounded-xl px-5 py-3.5 text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-400/60 transition-all text-sm"
+                        required
+                      />
+                    </div>
+                    {/* Image */}
+                    <div>
+                      <label className="block text-xs text-gray-400 mb-1 font-semibold uppercase tracking-wider">Nombre del Icono (opcional)</label>
+                      <input
+                        type="text"
+                        placeholder="Ej: inv_sword_01"
+                        value={newItem.image}
+                        onChange={e => setNewItem(p => ({ ...p, image: e.target.value }))}
+                        className="w-full bg-black/50 border border-purple-500/30 rounded-xl px-5 py-3.5 text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-400/60 transition-all text-sm"
                       />
                     </div>
                   </div>
-                )}
 
-
-                {/* Quality */}
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1 font-semibold uppercase tracking-wider">Calidad</label>
-                  <select
-                    value={newItem.quality}
-                    onChange={e => setNewItem(p => ({ ...p, quality: e.target.value }))}
-                    className="w-full bg-[#03060d]/80 border border-purple-500/30 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-cyan-400/60"
-                  >
-                    <option value="comun">Común</option>
-                    <option value="poco_comun">Poco Común</option>
-                    <option value="raro">Raro</option>
-                    <option value="epico">Épico</option>
-                    <option value="legendario">Legendario</option>
-                  </select>
+                  {/* Description */}
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-1 font-semibold uppercase tracking-wider">Descripción del Producto (Opcional)</label>
+                    <textarea
+                      placeholder="Detalles sobre este artículo o paquete..."
+                      value={newItem.description}
+                      onChange={e => setNewItem(p => ({ ...p, description: e.target.value }))}
+                      className="w-full bg-black/50 border border-purple-500/30 rounded-xl px-5 py-3.5 text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-400/60 transition-all min-h-[100px] resize-y text-sm"
+                    />
+                  </div>
                 </div>
-                {/* Subcategory / Tier dynamic picker + Clase PvE */}
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1 font-semibold uppercase tracking-wider">
-                     {newItem.category === 'pve' ? 'Tier PvE (1-9)' : 
-                      newItem.category === 'profesiones' ? 'Tipo de Profesión' :
-                      newItem.category === 'monturas' ? 'Tipo de Montura' :
-                      newItem.category === 'transmo' ? 'Tipo de Transfiguración' :
-                      newItem.category === 'boost' ? 'Subida de Nivel A' :
-                      'Subcategoría / Tier (0)'}
-                  </label>
-                  {newItem.category === 'profesiones' ? (
-                    <select
-                      value={newItem.tier}
-                      onChange={e => setNewItem(p => ({ ...p, tier: e.target.value }))}
-                      className="w-full bg-[#03060d]/80 border border-purple-500/30 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-cyan-400/60"
-                    >
-                      <option value="0">General</option>
-                      <option value="1">Herboristería</option>
-                      <option value="2">Minería</option>
-                      <option value="3">Alquimia</option>
-                      <option value="4">Ingeniería</option>
-                      <option value="5">Sastrería</option>
-                      <option value="6">Herrería</option>
-                      <option value="7">Encantamiento</option>
-                      <option value="8">Inscripción</option>
-                      <option value="9">Peletería</option>
-                      <option value="10">Joyería</option>
-                      <option value="11">Cocina</option>
-                      <option value="12">Primeros Auxilios</option>
-                    </select>
-                  ) : newItem.category === 'monturas' ? (
-                    <select
-                      value={newItem.tier}
-                      onChange={e => setNewItem(p => ({ ...p, tier: e.target.value }))}
-                      className="w-full bg-[#03060d]/80 border border-purple-500/30 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-cyan-400/60"
-                    >
-                      <option value="0">General</option>
-                      <option value="1">Terrestre</option>
-                      <option value="2">Voladora</option>
-                    </select>
-                  ) : newItem.category === 'transmo' ? (
-                    <select
-                      value={newItem.tier}
-                      onChange={e => setNewItem(p => ({ ...p, tier: e.target.value }))}
-                      className="w-full bg-[#03060d]/80 border border-purple-500/30 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-cyan-400/60"
-                    >
-                      <option value="0">General</option>
-                      <option value="1">Tela</option>
-                      <option value="2">Cuero</option>
-                      <option value="3">Malla</option>
-                      <option value="4">Placas</option>
-                      <option value="5">Armas/Otros</option>
-                    </select>
-                  ) : newItem.category === 'boost' ? (
-                    <select
-                      value={newItem.tier}
-                      onChange={e => setNewItem(p => ({ ...p, tier: e.target.value }))}
-                      className="w-full bg-[#03060d]/80 border border-purple-500/30 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-cyan-400/60"
-                    >
-                      <option value="0">General</option>
-                      <option value="60">Nivel 60</option>
-                      <option value="70">Nivel 70</option>
-                      <option value="80">Nivel 80</option>
-                    </select>
-                  ) : newItem.category === 'pve' ? (
-                    <>
+
+                {/* ── BLOQUE 2: Precios y Tipología ── */}
+                <div className="bg-[#03060d]/60 border border-purple-500/20 rounded-2xl p-6 md:p-8 space-y-6">
+                  <h3 className="text-sm font-black text-cyan-400 uppercase tracking-widest border-b border-purple-500/20 pb-2 flex items-center gap-2">
+                    <span className="bg-cyan-900/40 text-cyan-300 w-6 h-6 rounded-full flex items-center justify-center text-xs">2</span>
+                    Precios y Categoría
+                  </h3>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                    {/* Price */}
+                    <div>
+                      <label className="block text-xs text-gray-400 mb-1 font-semibold uppercase tracking-wider">Precio *</label>
                       <input
                         type="number"
-                        min={1} max={9}
-                        value={newItem.tier}
-                        onChange={e => setNewItem(p => ({ ...p, tier: e.target.value }))}
-                        className="w-full bg-[#03060d]/80 border border-purple-500/30 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-cyan-400/60 mb-2"
-                        placeholder="Ej: 8"
+                        placeholder="Ej: 150"
+                        value={newItem.price}
+                        onChange={e => setNewItem(p => ({ ...p, price: e.target.value }))}
+                        className="w-full bg-black/50 border border-purple-500/30 rounded-xl px-5 py-3.5 text-white focus:outline-none focus:ring-2 focus:ring-cyan-400/60 transition-all font-black text-yellow-500 text-sm"
+                        required
                       />
-                      <div className="mt-2">
-                        <label className="block text-xs text-gray-400 mb-1 font-semibold uppercase tracking-wider">Clases permitidas</label>
-                        <div className="flex flex-wrap gap-2">
-                          {CLASSES.map(cls => {
-                            const checked = (Number(newItem.classMask) & (1 << (cls.id - 1))) !== 0;
-                            return (
-                              <label key={cls.id} className="flex items-center gap-1 px-2 py-1 rounded-lg border-2 text-xs font-bold cursor-pointer" style={{ borderColor: cls.color, color: checked ? '#fff' : cls.color, background: checked ? cls.color + '22' : 'transparent' }}>
-                                <input
-                                  type="checkbox"
-                                  checked={checked}
-                                  onChange={e => {
-                                    let mask = Number(newItem.classMask) || 0;
-                                    if (e.target.checked) {
-                                      mask |= (1 << (cls.id - 1));
-                                    } else {
-                                      mask &= ~(1 << (cls.id - 1));
-                                    }
-                                    setNewItem(p => ({ ...p, classMask: String(mask) }));
-                                  }}
-                                  className="accent-cyan-500 mr-1"
-                                />
-                                {cls.name}
-                              </label>
-                            );
-                          })}
-                        </div>
-                        <div className="text-xs text-gray-500 mt-1">Puedes seleccionar varias clases. Si no seleccionas ninguna, será para todas.</div>
+                    </div>
+                    {/* Currency */}
+                    <div>
+                      <label className="block text-xs text-gray-400 mb-1 font-semibold uppercase tracking-wider">Moneda</label>
+                      <select
+                        value={newItem.currency}
+                        onChange={e => setNewItem(p => ({ ...p, currency: e.target.value }))}
+                        className="w-full bg-black/50 border border-purple-500/30 rounded-xl px-5 py-3.5 text-white focus:outline-none focus:ring-2 focus:ring-cyan-400/60 transition-all font-bold text-sm cursor-pointer"
+                      >
+                        <option value="vp">VP (Votación)</option>
+                        <option value="dp">DP (Donación)</option>
+                      </select>
+                    </div>
+                    {/* Category */}
+                    <div>
+                      <label className="block text-xs text-gray-400 mb-1 font-semibold uppercase tracking-wider">Categoría</label>
+                      <select
+                        value={newItem.category}
+                        onChange={e => setNewItem(p => ({ ...p, category: e.target.value }))}
+                        className="w-full bg-black/50 border border-purple-500/30 rounded-xl px-5 py-3.5 text-white focus:outline-none focus:ring-2 focus:ring-cyan-400/60 transition-all text-sm cursor-pointer"
+                      >
+                        <option value="pve">PvE (Tiers)</option>
+                        <option value="pvp">PvP Content</option>
+                        <option value="profesiones">Profesiones</option>
+                        <option value="wotlk">Wrath of the Lich King</option>
+                        <option value="tbc">The Burning Crusade</option>
+                        <option value="monturas">Monturas y Mascotas</option>
+                        <option value="transmo">Transfiguración</option>
+                        <option value="oro">Oro</option>
+                        <option value="boost">Servicios</option>
+                        <option value="misc">Otros</option>
+                      </select>
+                    </div>
+                    {/* Quality */}
+                    <div>
+                      <label className="block text-xs text-gray-400 mb-1 font-semibold uppercase tracking-wider">Calidad</label>
+                      <select
+                        value={newItem.quality}
+                        onChange={e => setNewItem(p => ({ ...p, quality: e.target.value }))}
+                        className="w-full bg-black/50 border border-purple-500/30 rounded-xl px-5 py-3.5 text-white focus:outline-none focus:ring-2 focus:ring-cyan-400/60 transition-all text-sm cursor-pointer"
+                      >
+                        <option value="comun">Común</option>
+                        <option value="poco_comun">Poco Común</option>
+                        <option value="raro">Raro</option>
+                        <option value="epico">Épico</option>
+                        <option value="legendario">Legendario</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── BLOQUE 3: Configuración de Entregas ── */}
+                <div className="bg-[#03060d]/60 border border-cyan-500/20 rounded-2xl p-6 md:p-8 space-y-6">
+                  <h3 className="text-sm font-black text-cyan-400 uppercase tracking-widest border-b border-cyan-500/20 pb-2 flex items-center gap-2">
+                    <span className="bg-cyan-900/40 text-cyan-300 w-6 h-6 rounded-full flex items-center justify-center text-xs">3</span>
+                    Modo de Entrega (Ítems o Servicio)
+                  </h3>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    {/* Service Type */}
+                    <div>
+                      <label className="block text-xs text-cyan-400 mb-2 font-semibold uppercase tracking-wider">Naturaleza del Producto</label>
+                      <select
+                        value={newItem.serviceType}
+                        onChange={e => {
+                          const st = e.target.value;
+                          let cat = newItem.category;
+                          let img = newItem.image;
+                          let sData = newItem.serviceData;
+                          let bItems = newItem.bundleItems;
+                          
+                          if (st === 'gold_pack') { 
+                            cat = 'oro'; 
+                            img = 'inv_misc_coin_02'; 
+                            bItems = [{ id: '', count: '1' }]; 
+                          }
+                          else if (st === 'level_boost') { 
+                            cat = 'boost'; 
+                            img = 'spell_holy_blessingofstrength'; 
+                            bItems = [{ id: '', count: '1' }]; 
+                          }
+                          else if (st === 'profession') { 
+                            cat = 'profesiones'; 
+                            bItems = [{ id: '', count: '1' }]; 
+                          }
+                          else if (st === 'none' || st === 'bundle') {
+                            sData = '';
+                          }
+                          
+                          setNewItem(p => ({ 
+                            ...p, 
+                            serviceType: st, 
+                            category: cat, 
+                            image: img, 
+                            serviceData: sData,
+                            bundleItems: bItems 
+                          }));
+                        }}
+                        className="w-full bg-cyan-950/20 border border-cyan-500/30 rounded-xl px-5 py-4 font-bold text-cyan-100 hover:border-cyan-400 transition-all cursor-pointer"
+                      >
+                        <option value="none" className="bg-gray-900">Items / Equipo Físico (Por Correo)</option>
+                        <option value="name_change" className="bg-gray-900">Cambio de Nombre</option>
+                        <option value="race_change" className="bg-gray-900">Cambio de Raza</option>
+                        <option value="faction_change" className="bg-gray-900">Cambio de Facción</option>
+                        <option value="level_boost" className="bg-gray-900">Instant Level Boost</option>
+                        <option value="gold_pack" className="bg-gray-900">Pack de Oro (Instant)</option>
+                        <option value="profession" className="bg-gray-900">Profesión / Skill (Instant)</option>
+                      </select>
+                    </div>
+                    
+                    {/* Soap Count */}
+                    <div>
+                      <label className="block text-xs text-gray-400 mb-2 font-semibold uppercase tracking-wider">Límite de Usos/Cantidad (SOAP)</label>
+                      <input
+                        type="number"
+                        min={1} max={255}
+                        value={newItem.soapCount}
+                        onChange={e => setNewItem(p => ({ ...p, soapCount: e.target.value }))}
+                        className="w-full bg-black/50 border border-purple-500/30 rounded-xl px-5 py-4 text-white focus:outline-none focus:ring-2 focus:ring-cyan-400/60 transition-all font-bold text-center"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Service Specific Section (Pink) */}
+                  {newItem.serviceType !== 'none' && newItem.serviceType !== 'bundle' && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border border-pink-500/30 bg-pink-900/10 p-5 md:p-6 rounded-2xl shadow-[inset_0_0_20px_rgba(236,72,153,0.1)]">
+                      <h3 className="sm:col-span-2 text-xs font-black text-pink-400 uppercase tracking-widest border-b border-pink-500/20 pb-2 mb-2 flex items-center gap-2">
+                         Variables del Servicio Instantáneo
+                      </h3>
+                      
+                      {newItem.serviceType === 'profession' && (
+                         <div>
+                           <label className="block text-xs text-gray-400 mb-1 font-semibold uppercase tracking-wider">Seleccionar Profesión</label>
+                           <select
+                             value={newItem.bundleItems[0]?.id || ''}
+                             onChange={(e) => {
+                               const tid = e.target.value;
+                               const prof = PROFESSIONS_LIST.find(p => String(p.id) === tid);
+                               const newName = !newItem.name || PROFESSIONS_LIST.some(p => p.name === newItem.name) ? (prof?.name || '') : newItem.name;
+                               setNewItem(p => ({ ...p, name: newName, bundleItems: [{ id: tid, count: '1' }] }));
+                             }}
+                             className="w-full bg-black/50 border border-pink-500/30 rounded-xl px-5 py-3.5 text-white focus:outline-none focus:ring-2 focus:ring-pink-400/60"
+                           >
+                             <option value="">-- Seleccionar --</option>
+                             {PROFESSIONS_LIST.map(prof => (
+                               <option key={prof.id} value={prof.id}>{prof.name}</option>
+                             ))}
+                           </select>
+                         </div>
+                      )}
+
+                      <div>
+                        <label className="block text-xs text-gray-400 mb-1 font-semibold uppercase tracking-wider">
+                          {newItem.serviceType === 'level_boost' ? 'Nivel Final (Ej: 80)' :
+                           newItem.serviceType === 'gold_pack' ? 'Cantidad de Oro' :
+                           newItem.serviceType === 'profession' ? 'Nivel de Habilidad (Ej: 450)' :
+                           'Valor del Servicio'}
+                        </label>
+                        <input
+                          type="number"
+                          placeholder="Ej: 450"
+                          value={newItem.serviceData}
+                          onChange={e => setNewItem(p => ({ ...p, serviceData: e.target.value }))}
+                          className="w-full bg-black/50 border border-pink-500/30 rounded-xl px-5 py-3.5 text-white focus:outline-none focus:ring-2 focus:ring-pink-400/60"
+                        />
                       </div>
-                    </>
-                  ) : (
-                    <input
-                      type="number"
-                      min={0} max={100}
-                      value={newItem.tier}
-                      onChange={e => setNewItem(p => ({ ...p, tier: e.target.value }))}
-                      className="w-full bg-[#03060d]/80 border border-purple-500/30 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-cyan-400/60"
-                      placeholder="Ej: 8"
-                    />
+                    </div>
                   )}
+
+                  {/* ITEM IDs Grid - Solo si es tipo NONE */}
+                  {/* We must always show it if it's none or bundle */}
+                  <div className={`transition-all duration-300 ${newItem.serviceType !== 'none' && newItem.serviceType !== 'bundle' ? 'opacity-50 pointer-events-none' : ''}`}>
+                    <div className="bg-purple-900/10 border border-purple-500/20 p-5 md:p-6 rounded-2xl space-y-4">
+                      <div className="flex justify-between items-center border-b border-purple-500/20 pb-4">
+                        <label className="block text-xs text-purple-300 font-bold uppercase tracking-wider">
+                          {newItem.serviceType === 'none' || newItem.serviceType === 'bundle' ? 'Lista de Ítems (IDs) a Enviar al Personaje' : 'ID Visual / Referencia'}
+                        </label>
+                        {(newItem.serviceType === 'none' || newItem.serviceType === 'bundle') && (
+                          <button 
+                            type="button"
+                            onClick={() => setNewItem(p => ({ ...p, bundleItems: [...p.bundleItems, { id: '', count: '1' }] }))}
+                            className="bg-purple-600 hover:bg-purple-500 text-white font-bold text-[10px] sm:text-xs uppercase px-4 py-2 rounded-lg transition-all shadow-[0_0_15px_rgba(168,85,247,0.4)]"
+                          >
+                            + Añadir Otra Pieza
+                          </button>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">
+                        {newItem.bundleItems.map((bi, idx) => (
+                          <div key={idx} className="flex gap-0 items-stretch bg-black/40 rounded-xl border border-white/5 overflow-hidden group hover:border-purple-500/50 transition-colors">
+                            <input
+                              type="number"
+                              placeholder={newItem.serviceType === 'profession' ? "ID Profesión" : "ID del Ítem (Ej: 49623)"}
+                              value={bi.id}
+                              onChange={(e) => {
+                                const nb = [...newItem.bundleItems];
+                                nb[idx].id = e.target.value;
+                                setNewItem({ ...newItem, bundleItems: nb });
+                              }}
+                              className="w-full bg-transparent px-4 py-3 text-white placeholder:text-gray-600 focus:outline-none font-medium text-sm"
+                              required={newItem.serviceType === 'none' || newItem.serviceType === 'bundle'}
+                            />
+                            {(newItem.serviceType === 'none' || newItem.serviceType === 'bundle') && newItem.bundleItems.length > 1 && (
+                              <div className="w-24 border-l border-white/10 bg-white/5 flex items-center justify-center">
+                                <input
+                                  type="number"
+                                  title="Cantidad a enviar"
+                                  placeholder="Cant."
+                                  value={bi.count}
+                                  onChange={(e) => {
+                                    const nb = [...newItem.bundleItems];
+                                    nb[idx].count = e.target.value;
+                                    setNewItem({ ...newItem, bundleItems: nb });
+                                  }}
+                                  className="w-full bg-transparent px-2 py-3 text-gray-300 text-center focus:outline-none text-sm"
+                                  min={1} required
+                                />
+                              </div>
+                            )}
+                            {(newItem.serviceType === 'none' || newItem.serviceType === 'bundle') && newItem.bundleItems.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const nb = [...newItem.bundleItems];
+                                  nb.splice(idx, 1);
+                                  setNewItem({ ...newItem, bundleItems: nb });
+                                }}
+                                className="bg-rose-900/30 text-rose-300 hover:bg-rose-600 hover:text-white px-4 transition-colors flex items-center justify-center border-l border-white/10"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                {/* Soap Count */}
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1 font-semibold uppercase tracking-wider">Cantidad SOAP</label>
-                  <input
-                    type="number"
-                    min={1} max={255}
-                    value={newItem.soapCount}
-                    onChange={e => setNewItem(p => ({ ...p, soapCount: e.target.value }))}
-                    className="w-full bg-[#03060d]/80 border border-purple-500/30 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-cyan-400/60"
-                  />
-                </div>
-                {/* Image */}
-                <div className="lg:col-span-2">
-                  <label className="block text-xs text-gray-400 mb-1 font-semibold uppercase tracking-wider">Nombre del Icono (opcional)</label>
-                  <input
-                    type="text"
-                    placeholder="Ej: inv_sword_01"
-                    value={newItem.image}
-                    onChange={e => setNewItem(p => ({ ...p, image: e.target.value }))}
-                    className="w-full bg-[#03060d]/80 border border-purple-500/30 rounded-xl px-4 py-2.5 text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-400/60"
-                  />
+
+                {/* ── BLOQUE 4: Filtros y Restricciones ── */}
+                <div className="bg-[#03060d]/60 border border-purple-500/20 rounded-2xl p-6 md:p-8 space-y-6">
+                  <h3 className="text-sm font-black text-cyan-400 uppercase tracking-widest border-b border-purple-500/20 pb-2 flex items-center gap-2">
+                    <span className="bg-cyan-900/40 text-cyan-300 w-6 h-6 rounded-full flex items-center justify-center text-xs">4</span>
+                    Filtros y Restricciones Visuales
+                  </h3>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-purple-900/10 p-5 md:p-6 rounded-2xl border border-purple-500/10">
+                    {/* ilvl Field (WotLK, PvE, PvP) */}
+                    {(newItem.category === 'wotlk' || newItem.category === 'pve' || newItem.category === 'pvp') && (
+                      <div>
+                        <label className="text-xs text-purple-300 font-bold uppercase block mb-1">Item Level (ilvl / GS)</label>
+                        <input
+                          type="number"
+                          value={newItem.itemLevel}
+                          onChange={e => setNewItem(p => ({ ...p, itemLevel: e.target.value }))}
+                          className="w-full bg-black/50 border border-purple-500/30 rounded-xl px-4 py-3.5 text-white text-sm focus:ring-2 focus:ring-purple-400/60 transition-all"
+                          placeholder="Ej: 264"
+                        />
+                      </div>
+                    )}
+
+                    {/* Tier / Subtype Selector */}
+                    <div>
+                      <label className="text-xs text-purple-300 font-bold uppercase block mb-1">
+                        {newItem.category === 'pve' ? 'Seleccionar Tier' : 
+                         newItem.category === 'transmo' ? 'Tipo de Armadura' : 
+                         newItem.category === 'monturas' ? 'Tipo de Montura' : 
+                         newItem.category === 'boost' ? 'Subida de Nivel a...' :
+                         'Tier / Subcategoría / Expansión'}
+                      </label>
+                      {['pve', 'transmo', 'monturas', 'boost'].includes(newItem.category || '') ? (
+                        <select
+                          value={newItem.tier}
+                          onChange={e => setNewItem(p => ({ ...p, tier: e.target.value }))}
+                          className="w-full bg-black/50 border border-purple-500/30 rounded-xl px-4 py-3.5 text-white text-sm focus:ring-2 focus:ring-purple-400/60 transition-all cursor-pointer"
+                        >
+                          {newItem.category === 'pve' ? (
+                            <>
+                              <option value="0">-- Sin Tier --</option>
+                              {[1,2,3,4,5,6,7,8,9,10,11].map(t => <option key={t} value={t}>Tier {t}</option>)}
+                            </>
+                          ) : newItem.category === 'monturas' ? (
+                            <>
+                              <option value="0">General</option>
+                              <option value="1">Terrestre</option>
+                              <option value="2">Voladora</option>
+                            </>
+                          ) : newItem.category === 'transmo' ? (
+                            <>
+                              <option value="0">General</option>
+                              <option value="1">Tela</option>
+                              <option value="2">Cuero</option>
+                              <option value="3">Malla</option>
+                              <option value="4">Placas</option>
+                              <option value="5">Armas/Otros</option>
+                            </>
+                          ) : (
+                            <>
+                              <option value="0">General</option>
+                              <option value="60">Nivel 60</option>
+                              <option value="70">Nivel 70</option>
+                              <option value="80">Nivel 80</option>
+                            </>
+                          )}
+                        </select>
+                      ) : (
+                        <input
+                          type="number"
+                          value={newItem.tier}
+                          onChange={e => setNewItem(p => ({ ...p, tier: e.target.value }))}
+                          className="w-full bg-black/50 border border-purple-500/30 rounded-xl px-4 py-3.5 text-white text-sm focus:ring-2 focus:ring-purple-400/60 transition-all"
+                          placeholder="Ej: 0"
+                        />
+                      )}
+                    </div>
+
+                    {/* Faction Restriction (T9) */}
+                    {newItem.category === 'pve' && newItem.tier === '9' && (
+                      <div className="md:col-span-2 p-4 bg-orange-950/20 border border-orange-500/30 rounded-xl mt-2 flex flex-col justify-center">
+                        <label className="block text-xs text-orange-300 font-bold uppercase mb-2">Restringir a Facción (Específico T9)</label>
+                        <select
+                          value={newItem.faction}
+                          onChange={e => setNewItem(p => ({ ...p, faction: e.target.value }))}
+                          className="w-full bg-black/50 border border-orange-500/50 rounded-xl px-4 py-3.5 text-white text-sm cursor-pointer"
+                        >
+                          <option value="all">Ambas (Horda y Alianza)</option>
+                          <option value="horda">Horda Únicamente</option>
+                          <option value="alianza">Alianza Únicamente</option>
+                        </select>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Class Selection */}
+                  <div className="p-5 md:p-6 border border-cyan-500/20 bg-cyan-950/10 rounded-2xl">
+                    <label className="block text-xs text-cyan-400 mb-3 font-semibold uppercase tracking-wider border-b border-cyan-500/20 pb-2">Clases Permitidas</label>
+                    <div className="flex flex-wrap gap-2.5">
+                      {CLASSES.map(cls => {
+                        const checked = (Number(newItem.classMask) & (1 << (cls.id - 1))) !== 0;
+                        return (
+                          <label key={cls.id} className="flex items-center gap-1 px-3 py-1.5 rounded-lg border-2 text-[10px] sm:text-xs font-bold cursor-pointer transition-all hover:-translate-y-0.5" style={{ borderColor: cls.color, color: checked ? '#fff' : cls.color, background: checked ? cls.color + '44' : 'transparent', boxShadow: checked ? `0 4px 12px ${cls.color}44` : 'none' }}>
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={e => {
+                                let mask = Number(newItem.classMask) || 0;
+                                if (e.target.checked) {
+                                  mask |= (1 << (cls.id - 1));
+                                } else {
+                                  mask &= ~(1 << (cls.id - 1));
+                                }
+                                setNewItem(p => ({ ...p, classMask: String(mask) }));
+                              }}
+                              className="hidden"
+                            />
+                            {cls.name}
+                          </label>
+                        );
+                      })}
+                    </div>
+                    <p className="text-[10px] text-cyan-200/50 mt-3 flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-cyan-500 inline-block" /> Si no seleccionas ninguna clase, el objeto estará disponible para todas.</p>
+                  </div>
                 </div>
 
                 {error && (
-                  <div className="lg:col-span-3 text-rose-300 text-sm bg-rose-900/20 px-4 py-2 rounded-xl">
+                  <div className="text-rose-300 text-sm bg-rose-900/20 px-6 py-4 rounded-xl border border-rose-500/50 flex flex-col gap-1 items-center">
+                    <span className="font-bold text-base block">Atención:</span>
                     {error}
                   </div>
                 )}
 
-                <div className="lg:col-span-3">
-                  <button
-                    type="submit"
-                    disabled={loading || fetchLoading}
-                    className={`inline-flex items-center gap-2 px-8 py-3 rounded-xl font-black text-sm transition-all shadow-[0_4px_16px_rgba(91,33,182,0.4)] ${
-                      loading
-                        ? 'bg-purple-700/70 animate-pulse cursor-not-allowed'
-                        : 'bg-gradient-to-r from-purple-700 to-cyan-700 hover:from-purple-600 hover:to-cyan-600'
-                    }`}
-                  >
-                    {editingId ? <Edit2 className="w-4 h-4" /> : <PlusCircle className="w-4 h-4" />}
-                    {loading ? 'Guardando...' : editingId ? 'Guardar Cambios' : 'Agregar a la Tienda'}
-                  </button>
-                  
+                <div className="flex flex-col sm:flex-row items-center gap-4 justify-end pt-4 border-t border-white/5 mt-8">
                   {editingId && (
                     <button
                       type="button"
                       onClick={cancelEdit}
-                      className="px-8 py-3.5 rounded-xl font-bold text-sm bg-white/5 border border-white/10 hover:bg-white/10 transition-all"
+                      className="w-full sm:w-auto px-8 py-4 rounded-xl font-bold text-sm bg-white/5 border border-white/10 hover:bg-red-500/20 hover:text-red-300 transition-all order-2 sm:order-1"
                     >
-                      Cancelar
+                      Cancelar Edición
                     </button>
                   )}
+                  
+                  <button
+                    type="submit"
+                    disabled={loading || fetchLoading}
+                    className={`w-full sm:w-auto inline-flex items-center justify-center gap-2 px-10 py-4 rounded-xl font-black text-sm transition-all shadow-[0_8px_32px_rgba(91,33,182,0.4)] order-1 sm:order-2 ${
+                      loading
+                        ? 'bg-purple-700/70 animate-pulse cursor-not-allowed'
+                        : 'bg-gradient-to-r from-purple-700 to-cyan-700 hover:from-purple-600 hover:to-cyan-600 hover:scale-[1.02]'
+                    }`}
+                  >
+                    {editingId ? <Edit2 className="w-5 h-5" /> : <PlusCircle className="w-5 h-5" />}
+                    {loading ? 'Guardando...' : editingId ? 'Guardar Cambios' : 'Agregar y Publicar'}
+                  </button>
                 </div>
               </form>
+
             </div>
 
             {/* Items list */}
@@ -949,7 +1021,24 @@ export default function AdminShopPage() {
                 <div className="flex justify-center py-12">
                   <div className="w-10 h-10 border-4 border-purple-900 border-t-cyan-300 rounded-full animate-spin" />
                 </div>
-              ) : items.length === 0 ? (
+              ) : (
+                <div className="space-y-4">
+                  {items.length > 0 && (
+                    <div className="flex items-center bg-[#03060d]/60 border border-purple-500/30 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-cyan-400/60 transition-all w-full md:w-2/3 lg:w-1/2">
+                      <div className="pl-4 pr-2 text-gray-500 flex items-center pointer-events-none">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                      </div>
+                      <input
+                        type="text"
+                        placeholder="Buscar por nombre, ID o categoría..."
+                        value={searchQuery}
+                        onChange={e => setSearchQuery(e.target.value)}
+                        className="w-full bg-transparent px-2 py-3.5 text-white placeholder:text-gray-500 focus:outline-none text-sm"
+                      />
+                    </div>
+                  )}
+
+                  {items.length === 0 ? (
                 <p className="text-gray-500 text-center py-8">No hay items en la tienda.</p>
               ) : (
                 <div className="overflow-x-auto">
@@ -968,7 +1057,13 @@ export default function AdminShopPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-white/5">
-                      {items.map(item => (
+                      {items
+                            .filter(item => 
+                              item.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                              String(item.item_id).includes(searchQuery) ||
+                              item.category.toLowerCase().includes(searchQuery.toLowerCase())
+                            )
+                            .map(item => (
                         <tr key={item.id} className="hover:bg-white/5 transition-colors">
                           <td className="py-3 text-gray-500">{item.id}</td>
                           <td className="py-3 font-semibold">{item.name}</td>
@@ -1000,6 +1095,8 @@ export default function AdminShopPage() {
                       ))}
                     </tbody>
                   </table>
+                </div>
+              )}
                 </div>
               )}
             </div>

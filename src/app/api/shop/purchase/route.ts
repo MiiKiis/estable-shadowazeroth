@@ -14,6 +14,7 @@ type ShopItemRow = {
   soap_item_count?: number | null;
   service_type?: string;
   service_data?: string | null;
+  faction?: string | null;
 };
 
 type UserRow = {
@@ -178,7 +179,7 @@ export async function POST(request: Request) {
     await connection.beginTransaction();
 
     const [itemRows] = await connection.query(
-      'SELECT id, name, price, currency, item_id, soap_item_entry, soap_item_count, service_type, service_data FROM shop_items WHERE id = ? LIMIT 1',
+      'SELECT id, name, price, currency, item_id, soap_item_entry, soap_item_count, service_type, service_data, faction FROM shop_items WHERE id = ? LIMIT 1',
       [itemId]
     );
     const items = itemRows as ShopItemRow[];
@@ -307,11 +308,11 @@ export async function POST(request: Request) {
             await charPool.query('UPDATE characters SET at_login = at_login | 64 WHERE guid = ?', [character.guid]);
             break;
           case 'level_boost':
-            const targetLevel = Number(item.service_data) || 60;
-            // SOAP: subir nivel usando .levelup NombreDelPersonaje 60 (nuevo comando)
-            await executeSoapCommand(`.levelup ${character.name} ${targetLevel}`);
+            const targetLevel = Number(item.service_data) || 80;
+            // Usamos .character level para establecer el nivel exacto, evitando errores con .levelup
+            await executeSoapCommand(`.character level ${character.name} ${targetLevel}`);
             // Si el boost incluye items, envíalos por correo automáticamente
-            if (item.service_data) {
+            if (item.service_data && item.service_data.includes('{')) {
               try {
                 const data = JSON.parse(item.service_data);
                 if (Array.isArray(data.items)) {
@@ -325,6 +326,11 @@ export async function POST(request: Request) {
                 }
               } catch (e) { /* No items o formato inválido, ignora */ }
             }
+            break;
+          case 'experience':
+            const xpAmount = Number(item.service_data) || 100000;
+            // .modify xp <amount> para añadir experiencia (AC standard)
+            await executeSoapCommand(`.modify xp ${character.name} ${xpAmount}`);
             break;
           case 'gold_pack':
             const goldAmount = Number(item.service_data) || 1000;
