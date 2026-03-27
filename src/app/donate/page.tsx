@@ -114,6 +114,8 @@ type ShopItem = {
   name: string;
   price: number;
   currency: string;
+  price_dp: number;
+  price_vp: number;
   quality: string;
   category?: string;
   tier?: number;
@@ -248,7 +250,7 @@ export default function DonatePage() {
     }
   }, [router]);
 
-  const handlePurchase = async (itemId: number) => {
+  const handlePurchase = async (itemId: number, currency: 'vp' | 'dp') => {
     if (!user) {
       setPurchaseError('Debes iniciar sesion para comprar.');
       return;
@@ -280,6 +282,7 @@ export default function DonatePage() {
           itemId,
           characterGuid: targetGuid,
           isGift,
+          currency,
           pin: isGift ? giftPin.trim() : undefined,
           targetAccountId: targetAccountId.trim() ? Number(targetAccountId) : undefined,
         }),
@@ -750,11 +753,19 @@ export default function DonatePage() {
                                   </span>
                                 </div>
                               )}
-                              <div className="flex items-center justify-center sm:justify-start gap-2 mt-2">
-                                <span className="text-yellow-400 font-black text-xl">{item.price}</span>
-                                <span className="text-yellow-400/60 font-bold text-sm uppercase tracking-tighter">
-                                  {item.currency === 'dp' ? 'DP' : 'VP'}
-                                </span>
+                              <div className="flex items-center justify-center sm:justify-start gap-4 mt-2">
+                                {(item.price_dp > 0 || (item.price === 0 && item.price_vp === 0)) && (
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-yellow-400 font-black text-xl">{item.price_dp > 0 ? item.price_dp : item.price}</span>
+                                    <span className="text-yellow-400/60 font-bold text-sm uppercase tracking-tighter">DP</span>
+                                  </div>
+                                )}
+                                {(item.price_vp > 0 || (item.currency === 'vp' && item.price > 0 && item.price_dp === 0 && item.price_vp === 0)) && (
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-violet-400 font-black text-xl">{item.price_vp > 0 ? item.price_vp : item.price}</span>
+                                    <span className="text-violet-400/60 font-bold text-sm uppercase tracking-tighter">VP</span>
+                                  </div>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -789,22 +800,36 @@ export default function DonatePage() {
                           )}
                         </div>
 
-                        <button
-                          onClick={() => handlePurchase(item.id)}
-                          disabled={isPurchasing}
-                          className={`w-full mt-4 py-4 rounded-xl flex items-center justify-center gap-3 font-black text-sm uppercase tracking-wider transition-all shadow-xl hover:scale-[1.02] active:scale-[0.98] ${
-                            isPurchasing 
-                              ? 'bg-gray-800 text-gray-400 cursor-not-allowed'
-                              : 'bg-gradient-to-r from-purple-600 to-indigo-700 hover:from-purple-500 hover:to-indigo-600 text-white shadow-purple-900/20'
-                          }`}
-                        >
-                          {isPurchasing ? (
-                            <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                          ) : (
-                            <ShoppingCart className="w-5 h-5" />
+                        <div className="w-full flex gap-2 mt-4">
+                          {(item.price_dp > 0 || (item.price === 0 && item.price_vp === 0)) && (
+                            <button
+                              onClick={() => handlePurchase(item.id, 'dp')}
+                              disabled={isPurchasing}
+                              className={`flex-1 py-3 px-2 rounded-xl flex items-center justify-center gap-2 font-black text-[11px] sm:text-xs uppercase tracking-wider transition-all shadow-xl hover:scale-[1.02] active:scale-[0.98] ${
+                                isPurchasing 
+                                  ? 'bg-gray-800 text-gray-400 cursor-not-allowed'
+                                  : 'bg-gradient-to-r from-yellow-600 to-yellow-700 hover:from-yellow-500 hover:to-yellow-600 text-white shadow-yellow-900/20'
+                              }`}
+                            >
+                              {isPurchasing ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <ShoppingCart className="w-4 h-4 shrink-0" />}
+                              Donaciones
+                            </button>
                           )}
-                          {isPurchasing ? 'Procesando…' : 'Comprar ahora'}
-                        </button>
+                          {(item.price_vp > 0 || (item.currency === 'vp' && item.price > 0 && item.price_dp === 0 && item.price_vp === 0)) && (
+                            <button
+                              onClick={() => handlePurchase(item.id, 'vp')}
+                              disabled={isPurchasing}
+                              className={`flex-1 py-3 px-2 rounded-xl flex items-center justify-center gap-2 font-black text-[11px] sm:text-xs uppercase tracking-wider transition-all shadow-xl hover:scale-[1.02] active:scale-[0.98] ${
+                                isPurchasing 
+                                  ? 'bg-gray-800 text-gray-400 cursor-not-allowed'
+                                  : 'bg-gradient-to-r from-violet-600 to-violet-700 hover:from-violet-500 hover:to-violet-600 text-white shadow-violet-900/20'
+                              }`}
+                            >
+                              {isPurchasing ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <ShoppingCart className="w-4 h-4 shrink-0" />}
+                              Estelas
+                            </button>
+                          )}
+                        </div>
                     {/* Modal de contenido de kit */}
                     <Modal open={openKitModal} onClose={() => setOpenKitModal(false)}>
                       <div className="flex flex-col items-center mb-6">

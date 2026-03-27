@@ -17,6 +17,7 @@ export default function DarDpAdminForm() {
   const [searchError, setSearchError] = useState('');
 
   const [amount, setAmount] = useState('');
+  const [currency, setCurrency] = useState<'dp' | 'vp'>('dp');
   const [sending, setSending] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   const [sendError, setSendError] = useState('');
@@ -63,13 +64,17 @@ export default function DarDpAdminForm() {
         body: JSON.stringify({
           targetUsername: foundAccount.username,
           amount: Number(amount),
+          currency,
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Error al entregar DP.');
+      if (!res.ok) throw new Error(data.error || 'Error al entregar puntos.');
 
-      setSuccessMsg(`✅ ${amount} DP entregados correctamente a ${foundAccount.username}. Ahora tiene ${foundAccount.dp + Number(amount)} DP.`);
-      setFoundAccount(prev => prev ? { ...prev, dp: prev.dp + Number(amount) } : null);
+      const currencyName = currency === 'dp' ? 'DP' : 'VP';
+      const newAmount = foundAccount[currency] + Number(amount);
+
+      setSuccessMsg(`✅ ${amount} ${currencyName} entregados correctamente a ${foundAccount.username}. Ahora tiene ${newAmount} ${currencyName}.`);
+      setFoundAccount(prev => prev ? { ...prev, [currency]: newAmount } : null);
       setAmount('');
     } catch (err: any) {
       setSendError(err.message || 'Error de conexión.');
@@ -90,11 +95,11 @@ export default function DarDpAdminForm() {
   return (
     <div className="rounded-2xl border border-yellow-500/20 bg-[#060a13]/80 backdrop-blur-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden">
       {/* Header */}
-      <div className="bg-gradient-to-r from-yellow-900/40 to-purple-900/30 px-8 py-6 border-b border-yellow-500/20 flex items-center gap-3">
-        <Coins className="w-8 h-8 text-yellow-400" />
+      <div className={`px-8 py-6 border-b flex items-center gap-3 transition-colors ${currency === 'vp' ? 'bg-gradient-to-r from-violet-900/40 to-purple-900/30 border-violet-500/20' : 'bg-gradient-to-r from-yellow-900/40 to-orange-900/30 border-yellow-500/20'}`}>
+        <Coins className={`w-8 h-8 ${currency === 'vp' ? 'text-violet-400' : 'text-yellow-400'}`} />
         <div>
-          <h2 className="text-2xl font-black text-white">Entregar Donation Points</h2>
-          <p className="text-yellow-200/50 text-sm mt-0.5">Busca la cuenta y asigna DP manualmente</p>
+          <h2 className="text-2xl font-black text-white">Entregar {currency === 'dp' ? 'Donation Points' : 'Estelas'}</h2>
+          <p className={`${currency === 'vp' ? 'text-violet-200/50' : 'text-yellow-200/50'} text-sm mt-0.5`}>Busca la cuenta y asigna puntos manualmente</p>
         </div>
       </div>
 
@@ -158,22 +163,36 @@ export default function DarDpAdminForm() {
               </button>
             </div>
 
-            {/* PASO 2 – Cantidad y enviar */}
+            {/* PASO 2 – Moneda, Cantidad y enviar */}
             <div>
               <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">
-                Paso 2 — Cantidad de DP a entregar
+                Paso 2 — Moneda y Cantidad a entregar
               </p>
+              
+              <div className="flex gap-4 mb-6">
+                <label className={`flex-1 flex items-center justify-center gap-2 p-4 rounded-xl border-2 cursor-pointer transition-all ${currency === 'dp' ? 'border-yellow-500 bg-yellow-900/20 text-yellow-400' : 'border-gray-800 bg-gray-900/50 text-gray-500 hover:border-gray-700 hover:text-gray-300'}`}>
+                  <input type="radio" name="currency" value="dp" checked={currency === 'dp'} onChange={() => setCurrency('dp')} className="sr-only" />
+                  <Coins className="w-5 h-5" />
+                  <span className="font-bold">Donation Points</span>
+                </label>
+                <label className={`flex-1 flex items-center justify-center gap-2 p-4 rounded-xl border-2 cursor-pointer transition-all ${currency === 'vp' ? 'border-violet-500 bg-violet-900/20 text-violet-400' : 'border-gray-800 bg-gray-900/50 text-gray-500 hover:border-gray-700 hover:text-gray-300'}`}>
+                  <input type="radio" name="currency" value="vp" checked={currency === 'vp'} onChange={() => setCurrency('vp')} className="sr-only" />
+                  <Coins className="w-5 h-5" />
+                  <span className="font-bold">Estelas</span>
+                </label>
+              </div>
+
               <form onSubmit={handleSend} className="space-y-4">
                 <div className="flex gap-3">
                   <div className="relative flex-1">
-                    <Coins className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-yellow-500 pointer-events-none" />
+                    <Coins className={`absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none ${currency === 'vp' ? 'text-violet-500' : 'text-yellow-500'}`} />
                     <input
                       type="number"
                       value={amount}
                       onChange={e => setAmount(e.target.value)}
                       placeholder="Ej: 100"
                       min="1"
-                      className="w-full bg-black/50 border border-yellow-500/30 rounded-xl pl-11 pr-4 py-3 text-white text-lg font-bold placeholder:text-gray-600 focus:outline-none focus:ring-2 focus:ring-yellow-400/50"
+                      className={`w-full bg-black/50 border rounded-xl pl-11 pr-4 py-3 text-white text-lg font-bold placeholder:text-gray-600 focus:outline-none focus:ring-2 ${currency === 'vp' ? 'border-violet-500/30 focus:ring-violet-400/50' : 'border-yellow-500/30 focus:ring-yellow-400/50'}`}
                     />
                   </div>
 
@@ -183,7 +202,7 @@ export default function DarDpAdminForm() {
                       key={n}
                       type="button"
                       onClick={() => setAmount(String(n))}
-                      className="px-4 py-3 rounded-xl border border-yellow-500/20 text-yellow-300 text-sm font-bold hover:bg-yellow-900/30 transition-all"
+                      className={`px-4 py-3 rounded-xl border text-sm font-bold transition-all ${currency === 'vp' ? 'border-violet-500/20 text-violet-300 hover:bg-violet-900/30' : 'border-yellow-500/20 text-yellow-300 hover:bg-yellow-900/30'}`}
                     >
                       +{n}
                     </button>
@@ -207,11 +226,14 @@ export default function DarDpAdminForm() {
                 <button
                   type="submit"
                   disabled={sending || !amount || Number(amount) <= 0}
-                  className="w-full py-4 rounded-xl font-black text-lg uppercase tracking-wider flex items-center justify-center gap-3 transition-all disabled:opacity-40 disabled:cursor-not-allowed
-                    bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-500 hover:to-orange-500 text-black shadow-[0_4px_20px_rgba(234,179,8,0.35)] hover:scale-[1.01]"
+                  className={`w-full py-4 rounded-xl font-black text-lg uppercase tracking-wider flex items-center justify-center gap-3 transition-all disabled:opacity-40 disabled:cursor-not-allowed text-white ${
+                    currency === 'vp'
+                      ? 'bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 shadow-[0_4px_20px_rgba(139,92,246,0.35)] hover:scale-[1.01]'
+                      : 'bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-500 hover:to-orange-500 text-black shadow-[0_4px_20px_rgba(234,179,8,0.35)] hover:scale-[1.01]'
+                  }`}
                 >
-                  <Send className="w-5 h-5" />
-                  {sending ? 'Enviando...' : `Enviar ${amount || '0'} DP a ${foundAccount.username}`}
+                  <Send className={`w-5 h-5 ${currency === 'dp' && 'text-black'}`} />
+                  {sending ? 'Enviando...' : `Enviar ${amount || '0'} ${currency === 'dp' ? 'DP' : 'VP'} a ${foundAccount.username}`}
                 </button>
               </form>
             </div>

@@ -50,6 +50,7 @@ const classIconMap: Record<number, string> = {
 type DashboardUser = {
   id: number;
   username: string;
+  faction?: 'horde' | 'alliance';
 };
 
 type DashboardCharacter = {
@@ -103,6 +104,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [avatarPage, setAvatarPage] = useState(1);
   const [accountRole, setAccountRole] = useState<'ADALID' | 'GM'>('ADALID');
+  const [faction, setFaction] = useState<'horde' | 'alliance'>('horde');
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -123,6 +125,13 @@ export default function Dashboard() {
   const [pinError, setPinError] = useState('');
   const [pinSuccess, setPinSuccess] = useState('');
   const [pointsData, setPointsData] = useState<{ vp: number; dp: number; gmlevel?: number } | null>(null);
+
+  // ── Accept Gifts / Modo Streamer ─────────────────────
+  const [acceptGifts, setAcceptGifts] = useState(true);
+  const [acceptGiftsSaving, setAcceptGiftsSaving] = useState(false);
+  // ── Pending Gifts (Escrow) ───────────────────────────
+  const [pendingGifts, setPendingGifts] = useState<any[]>([]);
+  const [pendingGiftLoading, setPendingGiftLoading] = useState<number | null>(null);
 
   const getClassIconSrc = (classId: number) => classIconMap[classId] || '/clases/warrior.png';
 
@@ -162,6 +171,11 @@ export default function Dashboard() {
 
     const userData = JSON.parse(storedUser) as DashboardUser;
     setUser(userData);
+    // Leer facción del localStorage
+    const userFaction = (userData.faction as 'horde' | 'alliance') ||
+      (localStorage.getItem(`faction_${userData.username?.toLowerCase()}`) as 'horde' | 'alliance') ||
+      'horde';
+    setFaction(userFaction);
 
     const fetchDashboardData = async () => {
       try {
@@ -200,12 +214,80 @@ export default function Dashboard() {
     };
 
     fetchDashboardData();
+
+    // ── Estelas Level Check: otorga Estelas si el jugador subió de nivel ──
+    fetch('/api/estelas/level-check', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accountId: userData.id }),
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (data?.totalEstelas && data.totalEstelas > 0) {
+          console.log(`⭐ ${data.totalEstelas} Estelas otorgadas por niveles:`, data.rewards);
+          // Refresh points data to reflect new VP
+          fetch(`/api/account/points?accountId=${userData.id}`)
+            .then(r => r.json())
+            .then(newPoints => setPointsData(newPoints))
+            .catch(() => {});
+        }
+      })
+      .catch(() => {}); // Silent fail — non-critical
+
+    // Fetch accept_gifts setting
+    fetch(`/api/account/settings?accountId=${userData.id}`)
+      .then(r => r.json())
+      .then(data => {
+        if (typeof data.accept_gifts === 'boolean') setAcceptGifts(data.accept_gifts);
+      })
+      .catch(() => {});
+
+    // Fetch pending gifts
+    fetch(`/api/gifts/pending?accountId=${userData.id}`)
+      .then(r => r.json())
+      .then(data => {
+        if (Array.isArray(data.gifts)) setPendingGifts(data.gifts);
+      })
+      .catch(() => {});
   }, [router]);
 
   const logout = () => {
     localStorage.removeItem('user');
     setUser(null);
     router.push('/');
+  };
+
+  // ── Toggle accept_gifts ────────────────────────────────
+  const toggleAcceptGifts = async () => {
+    if (!user || acceptGiftsSaving) return;
+    setAcceptGiftsSaving(true);
+    try {
+      const res = await fetch('/api/account/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountId: user.id, accept_gifts: !acceptGifts }),
+      });
+      const data = await res.json();
+      if (res.ok) setAcceptGifts(!acceptGifts);
+    } catch {}
+    setAcceptGiftsSaving(false);
+  };
+
+  // ── Accept/Reject pending gift ─────────────────────────
+  const handlePendingGift = async (giftId: number, action: 'accept' | 'reject') => {
+    if (!user || pendingGiftLoading) return;
+    setPendingGiftLoading(giftId);
+    try {
+      const res = await fetch('/api/gifts/pending', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ giftId, accountId: user.id, action }),
+      });
+      if (res.ok) {
+        setPendingGifts(prev => prev.filter(g => g.id !== giftId));
+      }
+    } catch {}
+    setPendingGiftLoading(null);
   };
 
   const SKILL_WOWHEAD_MAP: Record<number, number> = {
@@ -481,20 +563,50 @@ export default function Dashboard() {
         backgroundRepeat: 'no-repeat'
       }}
     >
-      <div className="pointer-events-none absolute inset-0 -z-10 bg-black/60" />
-      <div className="pointer-events-none absolute -z-10 top-16 left-1/2 -translate-x-1/2 h-72 w-[90vw] rounded-full bg-cyan-500/10 blur-3xl" />
-      <div className="pointer-events-none absolute -z-10 bottom-0 right-8 h-72 w-72 rounded-full bg-purple-700/20 blur-3xl" />
-      <div className="pointer-events-none absolute top-0 left-0 w-full h-[1px] bg-purple-900/30" />
+      {/* Overlay negro base */}
+      <div className="pointer-events-none absolute inset-0 -z-10 bg-black/55" />
+      {/* Glow de facción grande en la parte superior */}
+      <div className={`pointer-events-none fixed -z-10 top-0 left-1/2 -translate-x-1/2 h-[420px] w-[70vw] rounded-full blur-[120px] transition-colors duration-700 ${
+        faction === 'horde' ? 'bg-red-700/35' : 'bg-blue-600/35'
+      }`} />
+      {/* Glow secundario abajo-derecha */}
+      <div className={`pointer-events-none fixed -z-10 bottom-0 right-0 h-80 w-80 rounded-full blur-[90px] transition-colors duration-700 ${
+        faction === 'horde' ? 'bg-red-900/30' : 'bg-blue-900/30'
+      }`} />
+      {/* Borde superior de color */}
+      <div className={`pointer-events-none absolute top-0 left-0 w-full h-[3px] transition-colors duration-700 ${
+        faction === 'horde'
+          ? 'bg-gradient-to-r from-transparent via-red-500 to-transparent'
+          : 'bg-gradient-to-r from-transparent via-blue-400 to-transparent'
+      }`} />
 
       <div className="w-full max-w-[1800px] mx-auto space-y-12 z-10 relative">
         {/* Header Section */}
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-purple-900/30 pb-10">
-          <div>
-            <span className="text-[10px] font-black text-purple-600 uppercase tracking-[0.5em] mb-3 block">Fortaleza de Shadow Azeroth</span>
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black italic tracking-tighter text-white uppercase drop-shadow-[0_2px_14px_rgba(0,0,0,0.75)]">
-              Panel del <span className="text-purple-600 underline decoration-purple-900/50 underline-offset-8">administracion</span>
-            </h1>
+        <div className={`flex flex-col md:flex-row md:items-end justify-between gap-6 border-b pb-10 transition-colors duration-700 ${
+          faction === 'horde' ? 'border-red-800/40' : 'border-blue-700/40'
+        }`}>
+        <div>
+          <span className={`text-[11px] font-black uppercase tracking-[0.5em] mb-3 block transition-colors duration-700 ${
+            faction === 'horde' ? 'text-red-400' : 'text-blue-300'
+          }`}>⚔ Fortaleza de Shadow Azeroth</span>
+          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black italic tracking-tighter text-white uppercase drop-shadow-[0_2px_14px_rgba(0,0,0,0.75)]">
+            Panel del&nbsp;
+            <span className={`transition-colors duration-700 ${
+              faction === 'horde'
+                ? 'text-red-400 drop-shadow-[0_0_18px_rgba(239,68,68,0.7)]'
+                : 'text-blue-300 drop-shadow-[0_0_18px_rgba(96,165,250,0.7)]'
+            }`}>Adalid</span>
+          </h1>
+          {/* Insignia de facción llamativa */}
+          <div className={`mt-4 inline-flex items-center gap-2.5 px-4 py-2 rounded-full text-sm font-black uppercase tracking-widest border-2 shadow-lg transition-all duration-700 ${
+            faction === 'horde'
+              ? 'bg-red-950/80 border-red-500/70 text-red-300 shadow-red-900/50'
+              : 'bg-blue-950/80 border-blue-500/70 text-blue-200 shadow-blue-900/50'
+          }`}>
+            <span className="text-lg">{faction === 'horde' ? '🔴' : '🔵'}</span>
+            <span>{faction === 'horde' ? 'LA HORDA' : 'LA ALIANZA'}</span>
           </div>
+        </div>
           <div className="flex flex-wrap items-center gap-4 mb-2">
             <Link
               href="/donate"
@@ -516,12 +628,35 @@ export default function Dashboard() {
 
         {/* Stats Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-[340px_minmax(0,1fr)] gap-6 xl:gap-8 items-start">
-          {/* User Info Card */}
-          <div className="w-full bg-black/55 border border-purple-900/30 p-8 rounded-3xl shadow-xl relative overflow-hidden group">
-            <div className="absolute top-0 left-0 w-1 h-full bg-purple-800 transition-all group-hover:w-2" />
-            <div className="space-y-6">
+          {/* User Info Card - Color fuerte de facción */}
+          <div className={`w-full border-2 p-8 rounded-3xl shadow-2xl relative overflow-hidden group transition-all duration-700 ${
+            faction === 'horde'
+              ? 'bg-gradient-to-b from-red-950/80 to-black/90 border-red-600/60 shadow-red-900/40'
+              : 'bg-gradient-to-b from-blue-950/80 to-black/90 border-blue-500/60 shadow-blue-900/40'
+          }`}>
+            {/* Borde izquierdo grueso brillante */}
+            <div className={`absolute top-0 left-0 w-[5px] h-full transition-all duration-700 ${
+              faction === 'horde'
+                ? 'bg-gradient-to-b from-red-400 via-red-600 to-red-900 shadow-[0_0_12px_rgba(239,68,68,0.8)]'
+                : 'bg-gradient-to-b from-blue-300 via-blue-500 to-blue-900 shadow-[0_0_12px_rgba(96,165,250,0.8)]'
+            }`} />
+            {/* Glow intenso en esquina superior */}
+            <div className={`absolute -top-8 -right-8 w-48 h-48 rounded-full blur-3xl opacity-40 transition-colors duration-700 ${
+              faction === 'horde' ? 'bg-red-600' : 'bg-blue-500'
+            }`} />
+            {/* Glow sutil en el fondo */}
+            <div className={`absolute inset-0 rounded-3xl opacity-20 transition-colors duration-700 ${
+              faction === 'horde'
+                ? 'bg-gradient-to-br from-red-700 via-transparent to-transparent'
+                : 'bg-gradient-to-br from-blue-600 via-transparent to-transparent'
+            }`} />
+            <div className="space-y-6 relative z-10">
               <div className="flex items-center gap-4">
-                <div className="w-[100px] h-[100px] bg-purple-950/20 border border-purple-900/40 rounded-full flex items-center justify-center overflow-hidden">
+                <div className={`w-[100px] h-[100px] border-[3px] rounded-full flex items-center justify-center overflow-hidden transition-all duration-700 ${
+                  faction === 'horde'
+                    ? 'border-red-500 shadow-[0_0_20px_rgba(239,68,68,0.5)] bg-red-950/30'
+                    : 'border-blue-400 shadow-[0_0_20px_rgba(96,165,250,0.5)] bg-blue-950/30'
+                }`}>
                   {avatar ? (
                     <Image
                       src={`/avatares/${avatar}`}
@@ -535,8 +670,10 @@ export default function Dashboard() {
                   )}
                 </div>
                 <div>
-                  <h2 className="text-xl font-black uppercase tracking-tighter truncate">{user.username}</h2>
-                  <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">ID:#{user.id} - {accountRole}</p>
+                  <h2 className="text-xl font-black uppercase tracking-tighter truncate text-white">{user.username}</h2>
+                  <p className={`text-[11px] font-bold uppercase tracking-widest transition-colors duration-700 ${
+                    faction === 'horde' ? 'text-red-400/80' : 'text-blue-400/80'
+                  }`}>ID:#{user.id} — {accountRole}</p>
                 </div>
               </div>
 
@@ -544,25 +681,35 @@ export default function Dashboard() {
                 <button
                   type="button"
                   onClick={openAvatarModal}
-                  className="block w-full h-12 px-4 bg-purple-700/15 border border-purple-700/35 text-purple-200 hover:text-white hover:bg-purple-700/35 transition-all text-[11px] font-black uppercase tracking-[0.2em] text-center rounded-2xl"
+                  className={`block w-full h-12 px-4 border text-white transition-all text-[11px] font-black uppercase tracking-[0.2em] text-center rounded-2xl ${
+                    faction === 'horde'
+                      ? 'bg-red-900/30 border-red-600/50 hover:bg-red-700/50 hover:border-red-400'
+                      : 'bg-blue-900/30 border-blue-500/50 hover:bg-blue-700/50 hover:border-blue-300'
+                  }`}
                 >
-                  {avatar ? 'Cambiar avatar' : 'Elegir avatar'}
+                  {avatar ? '✦ Cambiar avatar' : '✦ Elegir avatar'}
                 </button>
 
                 <p className="text-[9px] uppercase tracking-[0.18em] text-gray-500 font-bold">
                   {avatarEditableAlways ? 'Cuenta especial: cambio libre de avatar' : `Cambiar avatar cuesta ${avatarChangeCostDp} credito`}
                 </p>
-
-                {/* El primer cambio es gratis, después muestra opciones en el modal */}
               </div>
               
-              <div className="space-y-4 pt-4 border-t border-purple-900/10">
+              <div className={`space-y-4 pt-4 border-t transition-colors duration-700 ${
+                faction === 'horde' ? 'border-red-900/30' : 'border-blue-900/30'
+              }`}>
                  <div className="flex justify-between items-center text-[11px] uppercase tracking-widest">
-                   <span className="text-gray-500 font-bold underline decoration-purple-900/20">Personajes</span>
-                   <span className="text-white font-black italic">{characters.length} / 10</span>
+                   <span className="text-gray-400 font-bold">Personajes</span>
+                   <span className={`font-black italic transition-colors duration-700 ${
+                     faction === 'horde' ? 'text-red-300' : 'text-blue-300'
+                   }`}>{characters.length} / 10</span>
                  </div>
-                 <div className="h-[2px] w-full bg-purple-950/30 overflow-hidden">
-                    <div className="h-full bg-purple-600" style={{ width: `${(characters.length / 10) * 100}%` }} />
+                 <div className="h-[3px] w-full bg-black/60 overflow-hidden rounded-full">
+                    <div className={`h-full rounded-full transition-all duration-700 ${
+                      faction === 'horde'
+                        ? 'bg-gradient-to-r from-red-700 to-red-400 shadow-[0_0_8px_rgba(239,68,68,0.6)]'
+                        : 'bg-gradient-to-r from-blue-700 to-blue-300 shadow-[0_0_8px_rgba(96,165,250,0.6)]'
+                    }`} style={{ width: `${(characters.length / 10) * 100}%` }} />
                  </div>
               </div>
             </div>
@@ -571,7 +718,9 @@ export default function Dashboard() {
           {/* Character List Column */}
           <div className="w-full space-y-4 transition-all duration-300">
             <div className="mb-6 flex items-center gap-6">
-              <h3 className="text-[10px] font-black text-purple-800 uppercase tracking-[0.4em] flex items-center gap-3">
+              <h3 className={`text-[10px] font-black uppercase tracking-[0.4em] flex items-center gap-3 transition-colors duration-700 ${
+                faction === 'horde' ? 'text-red-500' : 'text-blue-400'
+              }`}>
                 <Swords className="w-4 h-4" /> RECUENTO DE BATALLA
               </h3>
               <Link
@@ -619,10 +768,64 @@ export default function Dashboard() {
                       <ShieldAlert className="w-4 h-4 text-purple-400" />
                       Configurar PIN de Tienda
                     </button>
+                    {/* ── ACCEPT GIFTS TOGGLE ── */}
+                    <button
+                      type="button"
+                      onClick={toggleAcceptGifts}
+                      disabled={acceptGiftsSaving}
+                      className="w-full px-3 py-3 text-left text-[11px] font-bold uppercase tracking-[0.18em] text-slate-200 hover:text-white hover:bg-purple-800/25 transition-colors flex items-center gap-2 border-t border-purple-900/40"
+                    >
+                      <RefreshCw className={`w-4 h-4 ${acceptGiftsSaving ? 'animate-spin text-yellow-300' : acceptGifts ? 'text-green-400' : 'text-rose-400'}`} />
+                      <span className="flex-1">{acceptGifts ? 'Regalos: Activados' : 'Modo Streamer'}</span>
+                      <span className={`w-8 h-4 rounded-full relative transition-colors ${acceptGifts ? 'bg-green-600' : 'bg-rose-700'}`}>
+                        <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${acceptGifts ? 'left-4' : 'left-0.5'}`} />
+                      </span>
+                    </button>
                   </div>
                 )}
               </div>
             </div>
+
+            {/* ── PENDING GIFTS BANNER ── */}
+            {pendingGifts.length > 0 && (
+              <div className="space-y-3 mb-4">
+                <h4 className="text-[10px] font-black text-yellow-500 uppercase tracking-[0.4em] flex items-center gap-2">
+                  <Sparkles className="w-4 h-4" /> REGALOS PENDIENTES ({pendingGifts.length})
+                </h4>
+                {pendingGifts.map((gift) => (
+                  <div
+                    key={gift.id}
+                    className="flex flex-col sm:flex-row sm:items-center gap-3 px-5 py-4 bg-gradient-to-r from-yellow-900/15 to-purple-900/10 border border-yellow-500/30 rounded-xl"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-white truncate">
+                        {gift.item_name}
+                      </p>
+                      <p className="text-[11px] text-gray-400">
+                        De: <span className="text-cyan-300 font-semibold">{gift.donor_username || 'Jugador'}</span>
+                        {' → '} <span className="text-purple-300">{gift.character_name}</span>
+                      </p>
+                    </div>
+                    <div className="flex gap-2 flex-shrink-0">
+                      <button
+                        onClick={() => handlePendingGift(gift.id, 'accept')}
+                        disabled={pendingGiftLoading === gift.id}
+                        className="px-4 py-2 bg-green-700/60 border border-green-500/50 text-green-200 hover:bg-green-600 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all flex items-center gap-1"
+                      >
+                        <Check className="w-3.5 h-3.5" /> Aceptar
+                      </button>
+                      <button
+                        onClick={() => handlePendingGift(gift.id, 'reject')}
+                        disabled={pendingGiftLoading === gift.id}
+                        className="px-4 py-2 bg-rose-900/40 border border-rose-500/40 text-rose-300 hover:bg-rose-700 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all flex items-center gap-1"
+                      >
+                        <X className="w-3.5 h-3.5" /> Rechazar
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {characters.length === 0 ? (
               <div className="bg-[#0f0a0a] border border-purple-900/10 p-16 text-center rounded-sm">
@@ -634,15 +837,24 @@ export default function Dashboard() {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-4 xl:gap-5">
-                {characters.map((char) => (
+                {characters.map((char) => {
+                  const isHorde = [2, 5, 6, 8, 10].includes(Number(char.race));
+                  const cardBg = isHorde 
+                    ? 'bg-[#0a0404] border-red-900/10 hover:border-red-600/35 hover:bg-[#0f0505]' 
+                    : 'bg-[#04060a] border-blue-900/10 hover:border-blue-600/35 hover:bg-[#05080f]';
+                  const glowBg = isHorde ? 'bg-red-900/5' : 'bg-blue-900/5';
+                  const avatarBorder = isHorde ? 'border-red-900/30 group-hover:border-red-600' : 'border-blue-900/30 group-hover:border-blue-600';
+                  const avatarGlow = isHorde ? 'from-red-900/30' : 'from-blue-900/30';
+
+                  return (
                   <article
                     key={char.guid}
-                    className="group flex items-center gap-6 p-6 bg-[#0a0707] border border-purple-900/10 hover:border-purple-600/35 hover:bg-[#0f0a0a] transition-all rounded-sm relative overflow-hidden text-left w-full"
+                    className={`group flex items-center gap-6 p-6 ${cardBg} border transition-all rounded-xl relative overflow-hidden text-left w-full`}
                   >
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-purple-900/5 -rotate-12 translate-x-12 translate-y-12 blur-2xl pointer-events-none" />
+                    <div className={`absolute top-0 right-0 w-32 h-32 ${glowBg} -rotate-12 translate-x-12 translate-y-12 blur-2xl pointer-events-none`} />
 
-                    <div className="relative w-20 h-20 bg-black border border-purple-900/30 group-hover:border-purple-600 flex items-center justify-center transition-colors overflow-hidden">
-                      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-purple-900/20 to-transparent opacity-50" />
+                    <div className={`relative w-20 h-20 bg-black border ${avatarBorder} rounded-full flex items-center justify-center transition-colors overflow-hidden shrink-0`}>
+                      <div className={`pointer-events-none absolute inset-0 bg-gradient-to-t ${avatarGlow} to-transparent opacity-50`} />
                       <Image
                         src={getClassIconSrc(char.class)}
                         alt={`Icono de clase de ${classMap[char.class] || 'personaje'}`}
@@ -679,10 +891,11 @@ export default function Dashboard() {
                           <Sword className="w-3 h-3 opacity-50" /> {classMap[char.class] || 'Clase desconocida'}
                         </span>
                       </div>
-                      <p className="text-[9px] uppercase tracking-widest text-purple-500/70 pt-2 font-black">Personaje de tu cuenta</p>
+                      <p className={`text-[9px] uppercase tracking-widest pt-2 font-black ${isHorde ? 'text-red-500/70' : 'text-blue-500/70'}`}>Personaje de tu cuenta</p>
                     </div>
                   </article>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -749,11 +962,11 @@ export default function Dashboard() {
                       <>
                         <button
                           type="button"
-                          className="px-4 py-2 rounded-lg bg-gradient-to-r from-cyan-400 to-blue-700 text-white font-bold shadow-md hover:bg-cyan-500 transition-all"
+                          className="px-4 py-2 rounded-lg bg-gradient-to-r from-violet-500 to-indigo-600 text-white font-bold shadow-md hover:opacity-90 transition-all flex items-center gap-1.5"
                           onClick={() => handleUnlockAvatar('vp')}
                           disabled={!pointsData || pointsData.vp < AVATAR_UNLOCK_VP || savingAvatar}
                         >
-                          Usar 30VP de juego
+                          ✦ Usar 30 Estelas
                         </button>
                         <button
                           type="button"
@@ -770,7 +983,7 @@ export default function Dashboard() {
                                     <div className="flex items-center gap-2 text-sm text-amber-100 font-semibold">
                                       <Check className="w-5 h-5" />
                                       <span>
-                                        ¿Seguro que quieres cambiar tu avatar por {unlockCurrency === 'vp' ? '30 VP (tiempo de juego)' : '1 DP (Miikii Coins)'}?
+                                        ¿Seguro que quieres cambiar tu avatar por {unlockCurrency === 'vp' ? '30 Estelas (Soulbound)' : '1 DP (Donation Point)'}?
                                       </span>
                                     </div>
                                     <div className="flex items-center gap-2">
@@ -794,7 +1007,7 @@ export default function Dashboard() {
                                   )}
                   </div>
                   {avatar && !avatarEditableAlways && (
-                    <p className="text-xs text-gray-400 mt-2">Elige la moneda que prefieres gastar. VP se gana por tiempo de juego, DP se obtiene por donaciones.</p>
+                    <p className="text-xs text-gray-400 mt-2">Elige la moneda: <span className="text-violet-300 font-bold">Estelas</span> (Soulbound, ganadas en el servidor) o <span className="text-yellow-300 font-bold">DP</span> (obtenidos por donaciones).</p>
                   )}
                 </div>
               )}
@@ -963,7 +1176,7 @@ export default function Dashboard() {
                           </p>
                           <p className="text-[11px] text-slate-400">{purchase.character_name || 'Sin personaje'}{purchase.is_gift ? ' • Regalo' : ''}</p>
                         </div>
-                        <span className="text-right font-bold text-amber-300">{purchase.price} {purchase.currency.toUpperCase()}</span>
+                        <span className="text-right font-bold text-amber-300">{purchase.price} {purchase.currency === 'vp' ? 'Estelas' : purchase.currency.toUpperCase()}</span>
                         <span className="text-right text-xs text-slate-400">{formatPurchaseDate(purchase.created_at)}</span>
                       </a>
                     ))}

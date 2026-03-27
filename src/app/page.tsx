@@ -1,9 +1,12 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { LogIn, UserPlus, Shield, Radio } from 'lucide-react';
 import StatCards from '@/components/StatCards';
+
+// reCAPTCHA v3 site key (set in .env.local)
+const RECAPTCHA_SITE_KEY = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY || '';
 
 
   export default function Home() {
@@ -36,6 +39,51 @@ import StatCards from '@/components/StatCards';
     });
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const [recaptchaReady, setRecaptchaReady] = useState(false);
+
+    // ── Load reCAPTCHA v3 script ──────────────────────────────
+    useEffect(() => {
+      if (!RECAPTCHA_SITE_KEY) return;
+      // Don't load twice
+      if (document.getElementById('recaptcha-v3-script')) {
+        setRecaptchaReady(true);
+        return;
+      }
+      const script = document.createElement('script');
+      script.id = 'recaptcha-v3-script';
+      script.src = `https://www.google.com/recaptcha/api.js?render=${RECAPTCHA_SITE_KEY}`;
+      script.async = true;
+      script.onload = () => setRecaptchaReady(true);
+      document.head.appendChild(script);
+    }, []);
+
+    // ── Get reCAPTCHA token ──────────────────────────────────
+    const getRecaptchaToken = useCallback(async (): Promise<string> => {
+      if (!RECAPTCHA_SITE_KEY) return '';
+      try {
+        const grecaptcha = (window as any).grecaptcha;
+        if (!grecaptcha) {
+          console.error('reCAPTCHA: grecaptcha not loaded');
+          return '';
+        }
+        // Wait for grecaptcha to be ready
+        return new Promise<string>((resolve) => {
+          grecaptcha.ready(async () => {
+            try {
+              const token = await grecaptcha.execute(RECAPTCHA_SITE_KEY, { action: 'register' });
+              console.log('reCAPTCHA token obtained:', token ? 'yes' : 'no');
+              resolve(token || '');
+            } catch (err) {
+              console.error('reCAPTCHA execute error:', err);
+              resolve('');
+            }
+          });
+        });
+      } catch (err) {
+        console.error('reCAPTCHA error:', err);
+        return '';
+      }
+    }, [recaptchaReady]);
 
     // Validación y submit de login/registro
     const handleSubmit = async (e: React.FormEvent) => {
@@ -75,6 +123,18 @@ import StatCards from '@/components/StatCards';
 
       try {
         const endpoint = isLogin ? '/api/login' : '/api/register';
+
+        // Get reCAPTCHA token for registration
+        let recaptchaToken = '';
+        if (!isLogin && RECAPTCHA_SITE_KEY) {
+          recaptchaToken = await getRecaptchaToken();
+          if (!recaptchaToken) {
+            setError('Error al verificar reCAPTCHA. Recarga la página.');
+            setLoading(false);
+            return;
+          }
+        }
+
         const body = isLogin
           ? { username: formData.username, password: formData.password }
           : {
@@ -82,6 +142,8 @@ import StatCards from '@/components/StatCards';
               username: formData.username,
               password: formData.password,
               pin: formData.pin,
+              recaptchaToken,
+              faction: faction || 'horde',
             };
 
         const res = await fetch(endpoint, {
@@ -97,14 +159,26 @@ import StatCards from '@/components/StatCards';
         }
 
         if (!isLogin) {
+          // Guardar facción elegida para la nueva cuenta
+          localStorage.setItem('pending_faction', faction || 'horde');
           setError('');
           setFormData({ email: '', username: '', password: '', confirmPassword: '', pin: '' });
           setIsLogin(true);
           setError('Cuenta creada! Ahora inicia sesión');
         } else {
+          // Al iniciar sesión, intentar recuperar la facción guardada
+          const savedFaction = localStorage.getItem(`faction_${data.user?.username?.toLowerCase()}`) ||
+                               localStorage.getItem('pending_faction') ||
+                               'horde';
+          localStorage.removeItem('pending_faction');
+          localStorage.setItem(
+            `faction_${data.user?.username?.toLowerCase()}`,
+            savedFaction
+          );
           localStorage.setItem('user', JSON.stringify({
             id: data.user?.id,
             username: data.user?.username,
+            faction: savedFaction,
           }));
           setTimeout(() => {
             router.push('/dashboard');

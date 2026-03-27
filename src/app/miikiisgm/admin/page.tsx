@@ -61,6 +61,8 @@ interface ShopItem {
   item_id: number;
   price: number;
   currency: string;
+  price_dp: number;
+  price_vp: number;
   quality: string;
   category: string;
   tier: number;
@@ -77,8 +79,8 @@ interface ShopItem {
 interface NewItemForm {
   name: string;
   itemId: string;
-  price: string;
-  currency: string;
+  priceDp: string;
+  priceVp: string;
   category: string;
   quality: string;
   tier: string;
@@ -91,13 +93,19 @@ interface NewItemForm {
   itemLevel: string;
   description: string;
   bundleItems: { id: string; count: string }[];
+  // ── Boost bundle fields ──
+  boostLevel: string;
+  boostGold: string;
+  boostItems: string;
+  // ── Profession kit fields ──
+  profMaterials: string;
 }
 
 const EMPTY_ITEM: NewItemForm = {
   name: '',
   itemId: '',
-  price: '',
-  currency: 'vp',
+  priceDp: '',
+  priceVp: '',
   category: 'misc',
   quality: 'comun',
   tier: '0',
@@ -110,6 +118,10 @@ const EMPTY_ITEM: NewItemForm = {
   itemLevel: '0',
   description: '',
   bundleItems: [{ id: '', count: '1' }],
+  boostLevel: '80',
+  boostGold: '0',
+  boostItems: '',
+  profMaterials: '',
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -246,8 +258,8 @@ export default function AdminShopPage() {
     e.preventDefault();
     const user = getStoredUser();
     if (!user?.id) { router.push('/'); return; }
-    if (!newItem.name.trim() || !newItem.price) {
-      setError('Rellena nombre y precio.');
+    if (!newItem.name.trim() || (!newItem.priceDp && !newItem.priceVp)) {
+      setError('Rellena nombre y al menos un precio (Donaciones o Estelas).');
       return;
     }
  
@@ -283,8 +295,8 @@ export default function AdminShopPage() {
           userId: user.id,
           name: newItem.name.trim(),
           itemId: finalItemId,
-          price: Number(newItem.price),
-          currency: newItem.currency,
+          priceDp: Number(newItem.priceDp) || 0,
+          priceVp: Number(newItem.priceVp) || 0,
           category: newItem.category,
           quality: newItem.quality,
           tier: Number(newItem.tier),
@@ -292,7 +304,11 @@ export default function AdminShopPage() {
           image: newItem.image.trim() || 'inv_misc_questionmark',
           soapCount: Number(newItem.soapCount) || 1,
           serviceType: finalServiceType,
-          serviceData: finalServiceData,
+          serviceData: finalServiceType === 'level_boost'
+            ? JSON.stringify({ level: Number(newItem.boostLevel) || 80, gold: Number(newItem.boostGold) || 0, items: newItem.boostItems.trim() })
+            : finalServiceType === 'profession'
+            ? JSON.stringify({ skillId: Number(newItem.bundleItems[0]?.id) || 0, skillLevel: Number(newItem.serviceData) || 450, materials: newItem.profMaterials.trim() })
+            : finalServiceData,
           faction: newItem.faction || 'all',
           itemLevel: Number(newItem.itemLevel) || 0,
           description: newItem.description || '',
@@ -328,11 +344,28 @@ export default function AdminShopPage() {
        } catch { /* use single */ }
     }
  
+    // Parse service_data JSON for boost / profession
+    let boostLevel = '80', boostGold = '0', boostItems = '', profMaterials = '';
+    if (item.service_type === 'level_boost' && item.service_data) {
+      try {
+        const sd = JSON.parse(item.service_data);
+        boostLevel = String(sd.level || 80);
+        boostGold = String(sd.gold || 0);
+        boostItems = String(sd.items || '');
+      } catch { boostLevel = String(item.service_data); }
+    }
+    if (item.service_type === 'profession' && item.service_data) {
+      try {
+        const sd = JSON.parse(item.service_data);
+        profMaterials = String(sd.materials || '');
+      } catch {}
+    }
+
     setNewItem({
       name: item.name,
       itemId: String(item.item_id),
-      price: String(item.price),
-      currency: item.currency,
+      priceDp: String(item.price_dp || 0),
+      priceVp: String(item.price_vp || 0),
       category: item.category,
       quality: item.quality,
       tier: String(item.tier),
@@ -340,11 +373,17 @@ export default function AdminShopPage() {
       image: item.image,
       soapCount: String(item.soap_item_count),
       serviceType: item.service_type,
-      serviceData: item.service_data || '',
+      serviceData: item.service_type === 'profession' && item.service_data
+        ? (() => { try { return String(JSON.parse(item.service_data).skillLevel || item.service_data); } catch { return item.service_data || ''; } })()
+        : item.service_data || '',
       faction: item.faction || 'all',
       itemLevel: String(item.item_level || 0),
       description: item.description || '',
       bundleItems: bundle,
+      boostLevel,
+      boostGold,
+      boostItems,
+      profMaterials,
     });
  
     // scroll to form
@@ -484,7 +523,7 @@ export default function AdminShopPage() {
     { id: 'news',   label: 'Noticias', icon: <Newspaper className="w-4 h-4" /> },
     { id: 'addons', label: 'Addons',  icon: <Puzzle className="w-4 h-4" /> },
     { id: 'qr',     label: 'QR Pago', icon: <QrCode className="w-4 h-4" /> },
-    { id: 'dar_dp', label: 'Dar DP',  icon: <Coins className="w-4 h-4" /> },
+    { id: 'dar_dp', label: 'Puntos y Estelas',  icon: <Coins className="w-4 h-4" /> },
   ];
 
   // ── Render: main panel ───────────────────────────────────────────────────
@@ -600,29 +639,29 @@ export default function AdminShopPage() {
                   </h3>
                   
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                    {/* Price */}
+                    {/* Precio Donaciones (DP) */}
                     <div>
-                      <label className="block text-xs text-gray-400 mb-1 font-semibold uppercase tracking-wider">Precio *</label>
+                      <label className="block text-xs text-yellow-300/80 mb-1 font-semibold uppercase tracking-wider">💰 Precio Donaciones</label>
                       <input
                         type="number"
-                        placeholder="Ej: 150"
-                        value={newItem.price}
-                        onChange={e => setNewItem(p => ({ ...p, price: e.target.value }))}
-                        className="w-full bg-black/50 border border-purple-500/30 rounded-xl px-5 py-3.5 text-white focus:outline-none focus:ring-2 focus:ring-cyan-400/60 transition-all font-black text-yellow-500 text-sm"
-                        required
+                        placeholder="0 = no disponible"
+                        value={newItem.priceDp}
+                        onChange={e => setNewItem(p => ({ ...p, priceDp: e.target.value }))}
+                        className="w-full bg-black/50 border border-yellow-500/30 rounded-xl px-5 py-3.5 text-white focus:outline-none focus:ring-2 focus:ring-yellow-400/60 transition-all font-black text-yellow-400 text-sm"
                       />
+                      <p className="text-[10px] text-yellow-200/40 mt-1">Transferibles • Permite regalo</p>
                     </div>
-                    {/* Currency */}
+                    {/* Precio Estelas (VP) */}
                     <div>
-                      <label className="block text-xs text-gray-400 mb-1 font-semibold uppercase tracking-wider">Moneda</label>
-                      <select
-                        value={newItem.currency}
-                        onChange={e => setNewItem(p => ({ ...p, currency: e.target.value }))}
-                        className="w-full bg-black/50 border border-purple-500/30 rounded-xl px-5 py-3.5 text-white focus:outline-none focus:ring-2 focus:ring-cyan-400/60 transition-all font-bold text-sm cursor-pointer"
-                      >
-                        <option value="vp">VP (Votación)</option>
-                        <option value="dp">DP (Donación)</option>
-                      </select>
+                      <label className="block text-xs text-violet-300/80 mb-1 font-semibold uppercase tracking-wider">✦ Precio Estelas</label>
+                      <input
+                        type="number"
+                        placeholder="0 = no disponible"
+                        value={newItem.priceVp}
+                        onChange={e => setNewItem(p => ({ ...p, priceVp: e.target.value }))}
+                        className="w-full bg-black/50 border border-violet-500/30 rounded-xl px-5 py-3.5 text-white focus:outline-none focus:ring-2 focus:ring-violet-400/60 transition-all font-black text-violet-300 text-sm"
+                      />
+                      <p className="text-[10px] text-violet-300/40 mt-1">Soulbound • Sin regalo</p>
                     </div>
                     {/* Category */}
                     <div>
@@ -736,47 +775,126 @@ export default function AdminShopPage() {
 
                   {/* Service Specific Section (Pink) */}
                   {newItem.serviceType !== 'none' && newItem.serviceType !== 'bundle' && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border border-pink-500/30 bg-pink-900/10 p-5 md:p-6 rounded-2xl shadow-[inset_0_0_20px_rgba(236,72,153,0.1)]">
-                      <h3 className="sm:col-span-2 text-xs font-black text-pink-400 uppercase tracking-widest border-b border-pink-500/20 pb-2 mb-2 flex items-center gap-2">
-                         Variables del Servicio Instantáneo
+                    <div className="border border-pink-500/30 bg-pink-900/10 p-5 md:p-6 rounded-2xl shadow-[inset_0_0_20px_rgba(236,72,153,0.1)] space-y-5">
+                      <h3 className="text-xs font-black text-pink-400 uppercase tracking-widest border-b border-pink-500/20 pb-2 flex items-center gap-2">
+                         ⚡ Variables del Servicio
                       </h3>
                       
+                      {/* ── PROFESSION SECTION ── */}
                       {newItem.serviceType === 'profession' && (
-                         <div>
-                           <label className="block text-xs text-gray-400 mb-1 font-semibold uppercase tracking-wider">Seleccionar Profesión</label>
-                           <select
-                             value={newItem.bundleItems[0]?.id || ''}
-                             onChange={(e) => {
-                               const tid = e.target.value;
-                               const prof = PROFESSIONS_LIST.find(p => String(p.id) === tid);
-                               const newName = !newItem.name || PROFESSIONS_LIST.some(p => p.name === newItem.name) ? (prof?.name || '') : newItem.name;
-                               setNewItem(p => ({ ...p, name: newName, bundleItems: [{ id: tid, count: '1' }] }));
-                             }}
-                             className="w-full bg-black/50 border border-pink-500/30 rounded-xl px-5 py-3.5 text-white focus:outline-none focus:ring-2 focus:ring-pink-400/60"
-                           >
-                             <option value="">-- Seleccionar --</option>
-                             {PROFESSIONS_LIST.map(prof => (
-                               <option key={prof.id} value={prof.id}>{prof.name}</option>
-                             ))}
-                           </select>
-                         </div>
+                        <div className="space-y-4">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-xs text-gray-400 mb-1 font-semibold uppercase tracking-wider">Seleccionar Profesión</label>
+                              <select
+                                value={newItem.bundleItems[0]?.id || ''}
+                                onChange={(e) => {
+                                  const tid = e.target.value;
+                                  const prof = PROFESSIONS_LIST.find(p => String(p.id) === tid);
+                                  const newName = !newItem.name || PROFESSIONS_LIST.some(p => p.name === newItem.name) ? (prof?.name || '') : newItem.name;
+                                  setNewItem(p => ({ ...p, name: newName, bundleItems: [{ id: tid, count: '1' }] }));
+                                }}
+                                className="w-full bg-black/50 border border-pink-500/30 rounded-xl px-5 py-3.5 text-white focus:outline-none focus:ring-2 focus:ring-pink-400/60"
+                              >
+                                <option value="">-- Seleccionar --</option>
+                                {PROFESSIONS_LIST.map(prof => (
+                                  <option key={prof.id} value={prof.id}>{prof.name}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-xs text-gray-400 mb-1 font-semibold uppercase tracking-wider">Nivel de Habilidad (Ej: 450)</label>
+                              <input
+                                type="number"
+                                placeholder="450"
+                                value={newItem.serviceData}
+                                onChange={e => setNewItem(p => ({ ...p, serviceData: e.target.value }))}
+                                className="w-full bg-black/50 border border-pink-500/30 rounded-xl px-5 py-3.5 text-white focus:outline-none focus:ring-2 focus:ring-pink-400/60"
+                              />
+                            </div>
+                          </div>
+                          {/* Materials Textarea */}
+                          <div>
+                            <label className="block text-xs text-emerald-300 mb-1 font-semibold uppercase tracking-wider">📦 Kit de Materiales (Starter Pack)</label>
+                            <p className="text-[10px] text-gray-500 mb-2">Formato: <code className="text-emerald-300/70">itemId:cantidad</code> separados por comas. Ej: <code className="text-emerald-300/70">36913:20, 36908:10, 2604:15</code></p>
+                            <textarea
+                              placeholder="36913:20, 36908:10, 2604:15"
+                              value={newItem.profMaterials}
+                              onChange={e => setNewItem(p => ({ ...p, profMaterials: e.target.value }))}
+                              className="w-full bg-black/50 border border-emerald-500/30 rounded-xl px-5 py-3.5 text-emerald-200 placeholder:text-gray-600 focus:outline-none focus:ring-2 focus:ring-emerald-400/50 min-h-[80px] resize-y text-sm font-mono"
+                            />
+                            <p className="text-[10px] text-gray-600 mt-1">Estos materiales se envían por correo al personaje. Si el campo está vacío, solo se sube el skill.</p>
+                          </div>
+                        </div>
                       )}
 
-                      <div>
-                        <label className="block text-xs text-gray-400 mb-1 font-semibold uppercase tracking-wider">
-                          {newItem.serviceType === 'level_boost' ? 'Nivel Final (Ej: 80)' :
-                           newItem.serviceType === 'gold_pack' ? 'Cantidad de Oro' :
-                           newItem.serviceType === 'profession' ? 'Nivel de Habilidad (Ej: 450)' :
-                           'Valor del Servicio'}
-                        </label>
-                        <input
-                          type="number"
-                          placeholder="Ej: 450"
-                          value={newItem.serviceData}
-                          onChange={e => setNewItem(p => ({ ...p, serviceData: e.target.value }))}
-                          className="w-full bg-black/50 border border-pink-500/30 rounded-xl px-5 py-3.5 text-white focus:outline-none focus:ring-2 focus:ring-pink-400/60"
-                        />
-                      </div>
+                      {/* ── LEVEL BOOST SECTION ── */}
+                      {newItem.serviceType === 'level_boost' && (
+                        <div className="space-y-4">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-xs text-gray-400 mb-1 font-semibold uppercase tracking-wider">🎯 Nivel Final</label>
+                              <input
+                                type="number"
+                                placeholder="80"
+                                value={newItem.boostLevel}
+                                onChange={e => setNewItem(p => ({ ...p, boostLevel: e.target.value }))}
+                                className="w-full bg-black/50 border border-pink-500/30 rounded-xl px-5 py-3.5 text-white focus:outline-none focus:ring-2 focus:ring-pink-400/60 font-bold"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs text-yellow-300/80 mb-1 font-semibold uppercase tracking-wider">💰 Oro Incluido</label>
+                              <input
+                                type="number"
+                                placeholder="0 = sin oro"
+                                value={newItem.boostGold}
+                                onChange={e => setNewItem(p => ({ ...p, boostGold: e.target.value }))}
+                                className="w-full bg-black/50 border border-yellow-500/30 rounded-xl px-5 py-3.5 text-yellow-300 focus:outline-none focus:ring-2 focus:ring-yellow-400/60 font-bold"
+                              />
+                            </div>
+                          </div>
+                          {/* Items Textarea */}
+                          <div>
+                            <label className="block text-xs text-orange-300 mb-1 font-semibold uppercase tracking-wider">⚔️ Ítems del Boost (Equipment Bundle)</label>
+                            <p className="text-[10px] text-gray-500 mb-2">Formato: IDs de ítems separados por comas. Ej: <code className="text-orange-300/70">49908, 50644, 50603, 50078, 50613</code>. Cada uno se envía x1 por correo.</p>
+                            <textarea
+                              placeholder="49908, 50644, 50603, 50078, 50613"
+                              value={newItem.boostItems}
+                              onChange={e => setNewItem(p => ({ ...p, boostItems: e.target.value }))}
+                              className="w-full bg-black/50 border border-orange-500/30 rounded-xl px-5 py-3.5 text-orange-200 placeholder:text-gray-600 focus:outline-none focus:ring-2 focus:ring-orange-400/50 min-h-[100px] resize-y text-sm font-mono"
+                            />
+                            <p className="text-[10px] text-gray-600 mt-1">Los ítems se envían por correo in-game. Si el inventario está lleno, quedan en el buzón.</p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* ── GOLD PACK ── */}
+                      {newItem.serviceType === 'gold_pack' && (
+                        <div>
+                          <label className="block text-xs text-gray-400 mb-1 font-semibold uppercase tracking-wider">Cantidad de Oro</label>
+                          <input
+                            type="number"
+                            placeholder="Ej: 5000"
+                            value={newItem.serviceData}
+                            onChange={e => setNewItem(p => ({ ...p, serviceData: e.target.value }))}
+                            className="w-full bg-black/50 border border-pink-500/30 rounded-xl px-5 py-3.5 text-white focus:outline-none focus:ring-2 focus:ring-pink-400/60"
+                          />
+                        </div>
+                      )}
+
+                      {/* ── OTHER SERVICES (name/race/faction change) ── */}
+                      {!['profession', 'level_boost', 'gold_pack'].includes(newItem.serviceType) && (
+                        <div>
+                          <label className="block text-xs text-gray-400 mb-1 font-semibold uppercase tracking-wider">Valor del Servicio</label>
+                          <input
+                            type="number"
+                            placeholder="Ej: 450"
+                            value={newItem.serviceData}
+                            onChange={e => setNewItem(p => ({ ...p, serviceData: e.target.value }))}
+                            className="w-full bg-black/50 border border-pink-500/30 rounded-xl px-5 py-3.5 text-white focus:outline-none focus:ring-2 focus:ring-pink-400/60"
+                          />
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -1048,8 +1166,8 @@ export default function AdminShopPage() {
                         <th className="pb-3 text-left">ID</th>
                         <th className="pb-3 text-left">Nombre</th>
                         <th className="pb-3 text-left">Item ID</th>
-                        <th className="pb-3 text-left">Precio</th>
-                        <th className="pb-3 text-left">Moneda</th>
+                        <th className="pb-3 text-left">💰 Donaciones</th>
+                        <th className="pb-3 text-left">✦ Estelas</th>
                         <th className="pb-3 text-left">Calidad</th>
                         <th className="pb-3 text-left">Categoría</th>
                         <th className="pb-3 text-left">Tier</th>
@@ -1068,8 +1186,8 @@ export default function AdminShopPage() {
                           <td className="py-3 text-gray-500">{item.id}</td>
                           <td className="py-3 font-semibold">{item.name}</td>
                           <td className="py-3 text-cyan-300">{item.item_id}</td>
-                          <td className="py-3">{item.price}</td>
-                          <td className="py-3 uppercase text-xs text-purple-300">{item.currency}</td>
+                          <td className="py-3 font-bold text-yellow-400">{item.price_dp > 0 ? item.price_dp : <span className="text-gray-600">—</span>}</td>
+                          <td className="py-3 font-bold text-violet-300">{item.price_vp > 0 ? item.price_vp : <span className="text-gray-600">—</span>}</td>
                           <td className="py-3 capitalize text-xs">{item.quality?.replace('_', ' ')}</td>
                           <td className="py-3 uppercase text-xs">{item.category}</td>
                           <td className="py-3">{item.tier}</td>

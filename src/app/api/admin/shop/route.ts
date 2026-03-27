@@ -52,12 +52,19 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: adminCheck.error }, { status: adminCheck.status || 403 });
     }
 
+    // Auto-add dual price columns if not present
     try {
       await authPool.query('ALTER TABLE shop_items ADD COLUMN description TEXT NULL DEFAULT NULL');
-    } catch (colErr) { /* ya existe */ }
+    } catch { /* ya existe */ }
+    try {
+      await authPool.query('ALTER TABLE shop_items ADD COLUMN price_dp INT UNSIGNED NOT NULL DEFAULT 0');
+    } catch { /* ya existe */ }
+    try {
+      await authPool.query('ALTER TABLE shop_items ADD COLUMN price_vp INT UNSIGNED NOT NULL DEFAULT 0');
+    } catch { /* ya existe */ }
 
     const [rows]: any = await authPool.query(
-      `SELECT id, name, item_id, price, currency, quality, category, tier, class_mask, image, soap_item_count, service_type, service_data, faction, item_level, description
+      `SELECT id, name, item_id, price, currency, price_dp, price_vp, quality, category, tier, class_mask, image, soap_item_count, service_type, service_data, faction, item_level, description
        FROM shop_items
        ORDER BY id DESC`
     );
@@ -78,9 +85,24 @@ export async function POST(request: Request) {
     const userId = Number(body?.userId || 0);
     const name = String(body?.name || '').trim();
     const itemId = Number(body?.itemId || 0);
-    const price = Number(body?.price || 0);
-    const rawCurrency = String(body?.currency || 'vp').toLowerCase();
-    const currency = rawCurrency === 'dp' ? 'dp' : 'vp';
+
+    // ── DUAL PRICING ──────────────────────────────────────────
+    const priceDp = Math.max(0, Math.round(Number(body?.priceDp || 0)));
+    const priceVp = Math.max(0, Math.round(Number(body?.priceVp || 0)));
+
+    // Backward compat: si no vienen precios duales, usar price+currency legacy
+    let finalPriceDp = priceDp;
+    let finalPriceVp = priceVp;
+    if (priceDp === 0 && priceVp === 0) {
+      const legacyPrice = Math.round(Number(body?.price || 0));
+      const legacyCurrency = String(body?.currency || 'vp').toLowerCase();
+      if (legacyCurrency === 'dp') finalPriceDp = legacyPrice;
+      else finalPriceVp = legacyPrice;
+    }
+
+    // Legacy columns keep highest priority price for backward compat
+    const legacyPrice = finalPriceDp > 0 ? finalPriceDp : finalPriceVp;
+    const legacyCurrency = finalPriceDp > 0 ? 'dp' : 'vp';
 
     const adminCheck = await assertAdmin(userId);
     if (!adminCheck.ok) {
@@ -108,20 +130,25 @@ export async function POST(request: Request) {
     const description = body?.description ? String(body.description) : null;
 
     const safeItemId = Math.round(itemId);
-    const safePrice = Math.round(price);
     
-    // Allow itemId to be 0 for services
-    if (!name || (safeItemId <= 0 && service_type === 'none') || safeItemId < 0 || !safePrice || safePrice <= 0) {
+    // Validate: at least one price must be > 0
+    if (!name || (safeItemId <= 0 && service_type === 'none') || safeItemId < 0) {
       return NextResponse.json(
-        { error: 'Datos invalidos. Revisa name, itemId y price.' },
+        { error: 'Datos invalidos. Revisa name e itemId.' },
+        { status: 400 }
+      );
+    }
+    if (finalPriceDp <= 0 && finalPriceVp <= 0) {
+      return NextResponse.json(
+        { error: 'Debes asignar al menos un precio (Donaciones o Estelas).' },
         { status: 400 }
       );
     }
 
     const [result]: any = await authPool.query(
-      `INSERT INTO shop_items (name, item_id, price, currency, image, quality, category, tier, class_mask, soap_item_entry, soap_item_count, service_type, service_data, faction, item_level, description)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [name, safeItemId, safePrice, currency, image, quality, category, tier, classMask, safeItemId || null, soapCount, service_type, service_data, faction, itemLevel, description]
+      `INSERT INTO shop_items (name, item_id, price, currency, price_dp, price_vp, image, quality, category, tier, class_mask, soap_item_entry, soap_item_count, service_type, service_data, faction, item_level, description)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [name, safeItemId, legacyPrice, legacyCurrency, finalPriceDp, finalPriceVp, image, quality, category, tier, classMask, safeItemId || null, soapCount, service_type, service_data, faction, itemLevel, description]
     );
 
     return NextResponse.json(
@@ -154,9 +181,30 @@ export async function PUT(request: Request) {
 
     const name = String(body?.name || '').trim();
     const itemId = Number(body?.itemId || 0);
-    const price = Number(body?.price || 0);
-    const rawCurrency = String(body?.currency || 'vp').toLowerCase();
-    const currency = rawCurrency === 'dp' ? 'dp' : 'vp';
+    
+    // ── DUAL PRICING ──────────────────────────────────────────
+    const priceDp = Math.max(0, Math.round(Number(body?.priceDp || 0)));
+    const priceVp = Math.max(0, Math.round(Number(body?.priceVp || 0)));
+
+    let finalPriceDp = priceDp;
+    let finalPriceVp = priceVp;
+    if (priceDp === 0 && priceVp === 0) {
+      const legacyPrice = Math.round(Number(body?.price || 0));
+      const legacyCurrency = String(body?.currency || 'vp').toLowerCase();
+      if (legacyCurrency === 'dp') finalPriceDp = legacyPrice;
+      else finalPriceVp = legacyPrice;
+    }
+
+    const legacyPrice = finalPriceDp > 0 ? finalPriceDp : finalPriceVp;
+    const legacyCurrency = finalPriceDp > 0 ? 'dp' : 'vp';
+
+    if (finalPriceDp <= 0 && finalPriceVp <= 0) {
+      return NextResponse.json(
+        { error: 'Debes asignar al menos un precio (Donaciones o Estelas).' },
+        { status: 400 }
+      );
+    }
+
     const rawCategory = String(body?.category || 'misc').toLowerCase();
     const category = ['pve', 'pvp', 'profesiones', 'monturas', 'transmo', 'oro', 'boost', 'misc'].includes(rawCategory) ? rawCategory : 'misc';
     const tier = Math.max(0, Math.min(999, Number(body?.tier ?? 0)));
@@ -172,12 +220,12 @@ export async function PUT(request: Request) {
 
     const [result]: any = await authPool.query(
       `UPDATE shop_items SET 
-        name = ?, item_id = ?, price = ?, currency = ?, image = ?, 
+        name = ?, item_id = ?, price = ?, currency = ?, price_dp = ?, price_vp = ?, image = ?, 
         quality = ?, category = ?, tier = ?, class_mask = ?, 
         soap_item_entry = ?, soap_item_count = ?, service_type = ?, service_data = ?, faction = ?, item_level = ?, description = ?
        WHERE id = ? LIMIT 1`,
       [
-        name, itemId, price, currency, image, 
+        name, itemId, legacyPrice, legacyCurrency, finalPriceDp, finalPriceVp, image, 
         body?.quality || 'comun', category, tier, classMask, 
         itemId || null, soapCount, service_type, service_data, faction, itemLevel, description, id
       ]
