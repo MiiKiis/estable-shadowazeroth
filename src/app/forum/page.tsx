@@ -41,7 +41,7 @@ export default function ForumPage() {
     const router = useRouter();
   // --- MISSING STATE AND CONSTANTS ---
   // Category and UI state
-  const [activeCategory, setActiveCategory] = useState('all');
+  const [activeCategory, setActiveCategory] = useState('announcements');
   const [showNewTopic, setShowNewTopic] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [topics, setTopics] = useState<any[]>([]);
@@ -49,19 +49,15 @@ export default function ForumPage() {
 
   // Category definitions (example, adjust as needed)
   const CATEGORIES = [
-    { id: 'all', label: 'Todos', desc: 'Todos los temas', color: 'from-purple-700 to-indigo-700', border: 'border-purple-700', text: 'text-purple-300' },
     { id: 'announcements', label: 'Anuncios', desc: 'Novedades oficiales', color: 'from-fuchsia-700 to-fuchsia-900', border: 'border-fuchsia-700', text: 'text-fuchsia-300' },
-    { id: 'general', label: 'General', desc: 'Discusión general', color: 'from-purple-700 to-indigo-700', border: 'border-purple-700', text: 'text-purple-300' },
     { id: 'support', label: 'Soporte', desc: 'Ayuda y soporte', color: 'from-rose-700 to-rose-900', border: 'border-rose-700', text: 'text-rose-300' },
     { id: 'guides', label: 'Guías', desc: 'Guías y tutoriales', color: 'from-cyan-700 to-cyan-900', border: 'border-cyan-700', text: 'text-cyan-300' },
-    { id: 'reports', label: 'Reportes', desc: 'Reporta bugs', color: 'from-red-700 to-red-900', border: 'border-red-700', text: 'text-red-300' },
+    { id: 'reports', label: 'Denuncias', desc: 'Reporta bugs', color: 'from-red-700 to-red-900', border: 'border-red-700', text: 'text-red-300' },
     { id: 'suggestions', label: 'Sugerencias', desc: 'Ideas y sugerencias', color: 'from-emerald-700 to-emerald-900', border: 'border-emerald-700', text: 'text-emerald-300' },
   ];
   // Category icons (example, adjust as needed)
   const CATEGORY_ICONS: Record<string, React.ReactNode> = {
-    all: <Globe className="w-5 h-5" />,
     announcements: <Megaphone className="w-5 h-5" />,
-    general: <BookOpen className="w-5 h-5" />,
     support: <LifeBuoy className="w-5 h-5" />,
     guides: <Lightbulb className="w-5 h-5" />,
     reports: <AlertOctagon className="w-5 h-5" />,
@@ -98,13 +94,12 @@ export default function ForumPage() {
     return `${Math.floor(diff/86400)}d`;
   }
   const [newTitle, setNewTitle]     = useState('');
-  const [newCategory, setNewCategory] = useState('general');
+  const [newCategory, setNewCategory] = useState('announcements');
   const [realmStats, setRealmStats] = useState<RealmStats | null>(null);
 
   const openNewTopic = () => {
-    // Pre-select the currently active category (skip 'all')
-    if (activeCategory !== 'all') setNewCategory(activeCategory);
-    else setNewCategory('general');
+    // Pre-select the currently active category
+    setNewCategory(activeCategory);
     setShowNewTopic(v => !v);
   };
   const [newBody, setNewBody]       = useState('');
@@ -130,9 +125,7 @@ export default function ForumPage() {
 
   useEffect(() => {
     setLoading(true);
-    const url = activeCategory === 'all'
-      ? '/api/forum/topics'
-      : `/api/forum/topics?category=${activeCategory}`;
+    const url = `/api/forum/topics?category=${activeCategory}`;
     fetch(url)
       .then(r => r.json())
       .then(d => setTopics(Array.isArray(d.topics) ? d.topics : []))
@@ -175,7 +168,7 @@ export default function ForumPage() {
     const q = searchQuery.trim().toLowerCase();
 
     const items = topics
-      .filter((topic) => activeCategory === 'all' || topic.category === activeCategory)
+      .filter((topic) => topic.category === activeCategory)
       .filter((topic) => {
         if (!q) return true;
         return (
@@ -266,7 +259,7 @@ export default function ForumPage() {
               <div>
                 <p className="text-xs font-black uppercase tracking-widest text-gray-400 mb-2">¿Dónde va este tema?</p>
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
-                  {CATEGORIES.filter(c => c.id !== 'all').map(cat => (
+                  {CATEGORIES.map(cat => (
                     <button
                       key={cat.id}
                       type="button"
@@ -313,44 +306,7 @@ export default function ForumPage() {
           </div>
         )}
 
-        {activeCategory === 'all' && (
-          <section className="mb-8 grid grid-cols-1 md:grid-cols-3 gap-3">
-            <button
-              type="button"
-              onClick={() => setActiveCategory('announcements')}
-              className="text-left rounded-2xl border border-fuchsia-600/40 bg-gradient-to-br from-fuchsia-950/45 to-purple-950/25 p-4 hover:border-fuchsia-400/60 transition-all"
-            >
-              <p className="text-[10px] uppercase tracking-[0.25em] font-black text-fuchsia-300">Bloque de anuncios</p>
-              <p className="text-white font-black mt-2">Novedades oficiales del servidor</p>
-              <p className="text-gray-400 text-sm mt-1">Solo el staff publica aquí para mantener información clara y ordenada.</p>
-            </button>
 
-            <button
-              type="button"
-              onClick={() => setActiveCategory('guides')}
-              className="text-left rounded-2xl border border-cyan-600/40 bg-gradient-to-br from-cyan-950/35 to-purple-950/20 p-4 hover:border-cyan-400/60 transition-all"
-            >
-              <p className="text-[10px] uppercase tracking-[0.25em] font-black text-cyan-300">Guía de inicio rápido</p>
-              <p className="text-white font-black mt-2">¿Nuevo en Shadow Azeroth?</p>
-              <p className="text-gray-400 text-sm mt-1">Cliente, conexión, reglas y primeros pasos para no perderte en tu llegada.</p>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setActiveCategory('support');
-                setShowNewTopic(true);
-                setNewCategory('support');
-                setNewBody(SUPPORT_TEMPLATE);
-              }}
-              className="text-left rounded-2xl border border-rose-600/40 bg-gradient-to-br from-rose-950/35 to-purple-950/20 p-4 hover:border-rose-400/60 transition-all"
-            >
-              <p className="text-[10px] uppercase tracking-[0.25em] font-black text-rose-300">Soporte con plantilla</p>
-              <p className="text-white font-black mt-2">Reporta bugs de forma útil</p>
-              <p className="text-gray-400 text-sm mt-1">Incluye pasos, IDs y evidencia para que el staff pueda resolver más rápido.</p>
-            </button>
-          </section>
-        )}
 
         <div className="grid grid-cols-1 xl:grid-cols-[300px_minmax(0,1fr)_340px] 2xl:grid-cols-[320px_minmax(0,1fr)_360px] gap-6 items-start">
           <aside className="rounded-2xl border border-purple-900/35 bg-black/45 backdrop-blur-sm p-4 space-y-4 xl:sticky xl:top-28">
@@ -383,43 +339,7 @@ export default function ForumPage() {
               </div>
             </div>
 
-            <div>
-              <p className="text-[10px] uppercase tracking-[0.2em] font-black text-amber-300 mb-2">Vista</p>
-              <div className="space-y-2">
-                <button
-                  type="button"
-                  onClick={() => setSortBy('latest')}
-                  className={`w-full px-3 py-2 rounded-lg border text-xs font-black uppercase tracking-wide text-left ${sortBy === 'latest' ? 'border-amber-500/60 text-amber-200 bg-amber-900/25' : 'border-purple-900/40 text-gray-400 hover:text-white hover:border-purple-700/60'}`}
-                >
-                  Más recientes
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSortBy('popular')}
-                  className={`w-full px-3 py-2 rounded-lg border text-xs font-black uppercase tracking-wide text-left ${sortBy === 'popular' ? 'border-amber-500/60 text-amber-200 bg-amber-900/25' : 'border-purple-900/40 text-gray-400 hover:text-white hover:border-purple-700/60'}`}
-                >
-                  Más vistos
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSortBy('replies')}
-                  className={`w-full px-3 py-2 rounded-lg border text-xs font-black uppercase tracking-wide text-left ${sortBy === 'replies' ? 'border-amber-500/60 text-amber-200 bg-amber-900/25' : 'border-purple-900/40 text-gray-400 hover:text-white hover:border-purple-700/60'}`}
-                >
-                  Más respuestas
-                </button>
-              </div>
-            </div>
 
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 text-xs text-gray-300 cursor-pointer">
-                <input type="checkbox" checked={onlyPinned} onChange={(e) => setOnlyPinned(e.target.checked)} />
-                Solo fijados
-              </label>
-              <label className="flex items-center gap-2 text-xs text-gray-300 cursor-pointer">
-                <input type="checkbox" checked={onlyLocked} onChange={(e) => setOnlyLocked(e.target.checked)} />
-                Solo cerrados
-              </label>
-            </div>
           </aside>
 
           <section>
@@ -431,8 +351,8 @@ export default function ForumPage() {
                   onClick={() => setActiveCategory(cat.id)}
                   className={`px-4 py-2 rounded-xl font-black text-xs uppercase tracking-widest transition-all border ${
                     activeCategory === cat.id
-                      ? 'bg-gradient-to-r ' + cat.color + ' border-purple-500/60 text-white shadow-[0_0_15px_rgba(168,85,247,0.3)]'
-                      : 'bg-black/30 border-purple-900/30 text-gray-400 hover:text-white hover:border-purple-700/50'
+                      ? 'bg-gradient-to-r ' + cat.color + ' border-purple-400 text-white shadow-[0_0_20px_rgba(168,85,247,0.8)] scale-105 transform z-10 ring-2 ring-purple-500/60'
+                      : 'bg-black/30 border-purple-900/40 text-gray-400 hover:text-white hover:border-purple-600/60'
                   }`}
                 >
                   {cat.label}
@@ -503,7 +423,6 @@ export default function ForumPage() {
                         })()}
                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${
                           topic.category === 'announcements' ? 'border-fuchsia-700/40 text-fuchsia-300' :
-                          topic.category === 'general' ? 'border-purple-700/40 text-purple-400' :
                           topic.category === 'support' ? 'border-rose-700/40 text-rose-400' :
                           topic.category === 'guides'  ? 'border-cyan-700/40 text-cyan-400' :
                           topic.category === 'reports' ? 'border-red-700/50 text-red-400' :

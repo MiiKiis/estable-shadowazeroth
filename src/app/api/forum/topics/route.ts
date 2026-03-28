@@ -162,6 +162,7 @@ export async function POST(request: Request) {
     const title  = String(body?.title || '').trim();
     const category = String(body?.category || 'general');
     const comment  = String(body?.comment || '').trim();
+    const pinned   = body?.pinned ? 1 : 0;
 
     const validCategories = ['general', 'support', 'guides', 'guild', 'reports', 'suggestions', 'announcements'];
 
@@ -185,8 +186,8 @@ export async function POST(request: Request) {
     try {
       await conn.beginTransaction();
       const [topicResult] = await conn.query<ResultSetHeader>(
-        'INSERT INTO forum_topics (title, category, author_id) VALUES (?, ?, ?)',
-        [title, category, userId]
+        'INSERT INTO forum_topics (title, category, author_id, pinned) VALUES (?, ?, ?, ?)',
+        [title, category, userId, pinned]
       );
       const topicId = topicResult.insertId;
       await conn.query(

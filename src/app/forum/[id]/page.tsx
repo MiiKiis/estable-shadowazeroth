@@ -46,7 +46,6 @@ const ROLE_BADGE: Record<string, string> = {
 
 const CATEGORY_LABELS: Record<string, string> = {
   announcements: 'Anuncios',
-  general: 'General',
   support: 'Soporte',
   guides:  'Guías',
   guild:   'Hermandades',
@@ -67,6 +66,28 @@ function timeAgo(dateStr: string): string {
   if (diff < 3600)  return `hace ${Math.floor(diff / 60)}m`;
   if (diff < 86400) return `hace ${Math.floor(diff / 3600)}h`;
   return `hace ${Math.floor(diff / 86400)}d`;
+}
+
+function parseBBCode(text: string): string {
+  return text
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\n/g, '<br/>')
+    .replace(/\[b\](.*?)\[\/b\]/gi, "<strong>$1</strong>")
+    .replace(/\[i\](.*?)\[\/i\]/gi, "<em>$1</em>")
+    .replace(/\[u\](.*?)\[\/u\]/gi, "<u>$1</u>")
+    .replace(/\[center\]([\s\S]*?)\[\/center\]/gi, "<div class='text-center'>$1</div>")
+    .replace(/\[img\](.*?)\[\/img\]/gi, "<img src='$1' class='max-w-full rounded-md shadow-[0_0_15px_rgba(168,85,247,0.4)] my-2 border border-purple-500/30' alt='Imagen adjunta' />")
+    .replace(/\[color=(.*?)\](.*?)\[\/color\]/gi, "<span style='color:$1'>$2</span>")
+    .replace(/\[size=(.*?)\](.*?)\[\/size\]/gi, "<span style='font-size:$1'>$2</span>")
+    .replace(/\[font=(.*?)\](.*?)\[\/font\]/gi, "<span style='font-family:$1'>$2</span>");
+}
+
+function renderCommentContent(comment: string, role: string) {
+  if (role === 'GM' || role === 'Moderador') {
+    return <div className="text-gray-100 leading-relaxed break-words text-[15px] max-w-none" dangerouslySetInnerHTML={{ __html: parseBBCode(comment) }} />;
+  }
+  return <p className="text-gray-100 leading-relaxed whitespace-pre-wrap break-words text-[15px]">{comment}</p>;
 }
 
 function AvatarColumn({ author, postIndex }: { author: Author; postIndex: number }) {
@@ -498,9 +519,7 @@ export default function TopicPage() {
                         </div>
                       </div>
                     ) : (
-                      <p className="text-gray-100 leading-relaxed whitespace-pre-wrap break-words text-[15px]">
-                        {c.comment}
-                      </p>
+                      renderCommentContent(c.comment, c.author.role)
                     )}
 
                     {/* Action bar */}

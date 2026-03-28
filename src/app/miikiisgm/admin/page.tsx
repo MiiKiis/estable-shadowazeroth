@@ -18,8 +18,10 @@ import {
   X,
   Coins,
   Edit2,
+  MessageSquare,
 } from 'lucide-react';
 import DarDpAdminForm from './DarDpAdminForm';
+import AdminForum from './AdminForum';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 // Profesiones WoW
@@ -136,7 +138,7 @@ function getStoredUser(): { id?: number; username?: string } | null {
 }
 
 // ── Page ──────────────────────────────────────────────────────────────────────
-type AdminTab = 'shop' | 'news' | 'addons' | 'qr' | 'dar_dp';
+type AdminTab = 'shop' | 'news' | 'addons' | 'qr' | 'dar_dp' | 'forum';
 
 export default function AdminShopPage() {
   const router = useRouter();
@@ -163,6 +165,7 @@ export default function AdminShopPage() {
 
   // tabs
   const [activeTab, setActiveTab] = useState<AdminTab>('shop');
+  const [myGmLevel, setMyGmLevel] = useState<number>(0);
 
   // ── Fetch shop items ─────────────────────────────────────────────────────
   const fetchItems = async () => {
@@ -209,14 +212,18 @@ export default function AdminShopPage() {
     }
     setStoredUsername(user.username || '');
     
-    // Verificación silenciosa de GM para rebotar cuentas normales
     fetch(`/api/account/points?accountId=${user.id}`)
       .then((res) => res.json())
       .then((data) => {
-        if (!data.gmlevel || Number(data.gmlevel) < 3) {
+        const lvl = Number(data.gmlevel || 0);
+        if (lvl < 1) {
           router.replace('/dashboard');
         } else {
+          setMyGmLevel(lvl);
           setCheckingAuth(false);
+          if (lvl < 3) {
+            setActiveTab('forum');
+          }
         }
       })
       .catch(() => router.replace('/dashboard'));
@@ -244,8 +251,14 @@ export default function AdminShopPage() {
 
       setPasswordVerified(true);
       setAccessChecking(true);
-      setFetchLoading(true);
-      await fetchItems();
+      
+      if (myGmLevel >= 3) {
+        setFetchLoading(true);
+        await fetchItems();
+      } else {
+        setIsAllowed(true);
+        setAccessChecking(false);
+      }
     } catch {
       setPasswordError('Error de conexión. Inténtalo de nuevo.');
     } finally {
@@ -512,18 +525,21 @@ export default function AdminShopPage() {
   if (!isAllowed) {
     return (
       <main className="min-h-screen flex items-center justify-center bg-[#04040a] text-white">
-        <p className="text-rose-400 text-lg font-bold">Acceso denegado. Se requiere GM nivel 3+.</p>
+        <p className="text-rose-400 text-lg font-bold">Acceso denegado. Se requiere ser miembro del Staff.</p>
       </main>
     );
   }
 
   // ── Tab config ───────────────────────────────────────────────────────────
   const tabs: { id: AdminTab; label: string; icon: React.ReactNode }[] = [
-    { id: 'shop',   label: 'Tienda',  icon: <Package className="w-4 h-4" /> },
-    { id: 'news',   label: 'Noticias', icon: <Newspaper className="w-4 h-4" /> },
-    { id: 'addons', label: 'Addons',  icon: <Puzzle className="w-4 h-4" /> },
-    { id: 'qr',     label: 'QR Pago', icon: <QrCode className="w-4 h-4" /> },
-    { id: 'dar_dp', label: 'Puntos y Estelas',  icon: <Coins className="w-4 h-4" /> },
+    ...(myGmLevel >= 3 ? [
+      { id: 'shop' as AdminTab,   label: 'Tienda',  icon: <Package className="w-4 h-4" /> },
+      { id: 'news' as AdminTab,   label: 'Noticias', icon: <Newspaper className="w-4 h-4" /> },
+      { id: 'addons' as AdminTab, label: 'Addons',  icon: <Puzzle className="w-4 h-4" /> },
+      { id: 'qr' as AdminTab,     label: 'QR Pago', icon: <QrCode className="w-4 h-4" /> },
+      { id: 'dar_dp' as AdminTab, label: 'Puntos y Estelas',  icon: <Coins className="w-4 h-4" /> },
+    ] : []),
+    { id: 'forum' as AdminTab, label: 'Foro', icon: <MessageSquare className="w-4 h-4" /> }
   ];
 
   // ── Render: main panel ───────────────────────────────────────────────────
@@ -563,6 +579,9 @@ export default function AdminShopPage() {
       </div>
 
       <div className="w-full max-w-[1400px] mx-auto px-4 sm:px-8">
+        {/* ── FORUM TAB ─────────────────────────────────────────────────────── */}
+        {activeTab === 'forum' && <AdminForum />}
+
         {/* ── SHOP TAB ─────────────────────────────────────────────────────── */}
         {activeTab === 'shop' && (
           <div className="space-y-8">
