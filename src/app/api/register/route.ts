@@ -15,6 +15,79 @@ const ACCOUNT_PIN_REGEX = /^\d{4}$/;
 const RECAPTCHA_SECRET = process.env.RECAPTCHA_SECRET_KEY || '';
 const RECAPTCHA_MIN_SCORE = 0.5;
 
+const LOCAL_IPS = new Set(['127.0.0.1', '::1']);
+
+function isLocalIp(ip: string): boolean {
+    return LOCAL_IPS.has(ip);
+}
+
+function normalizeIpCandidate(value: string | null | undefined): string | null {
+    if (!value) return null;
+    let ip = value.trim();
+    if (!ip) return null;
+
+    // Remove optional wrapping quotes.
+    if (ip.startsWith('"') && ip.endsWith('"')) {
+        ip = ip.slice(1, -1);
+    }
+
+    // Strip IPv6-mapped IPv4 prefix.
+    if (ip.startsWith('::ffff:')) {
+        ip = ip.slice(7);
+    }
+
+    // Normalize bracketed IPv6 + optional port: [::1]:1234 -> ::1
+    if (ip.startsWith('[')) {
+        const endBracket = ip.indexOf(']');
+        if (endBracket > 0) {
+            ip = ip.slice(1, endBracket);
+        }
+    }
+
+    // Strip port from IPv4 form like 1.2.3.4:1234.
+    const ipv4WithPort = ip.match(/^(\d{1,3}(?:\.\d{1,3}){3}):(\d+)$/);
+    if (ipv4WithPort) {
+        ip = ipv4WithPort[1];
+    }
+
+    return ip || null;
+}
+
+function parseForwardedHeader(forwarded: string | null): string | null {
+    if (!forwarded) return null;
+
+    // RFC 7239 format example: Forwarded: for=1.2.3.4;proto=https;by=...
+    const entries = forwarded.split(',');
+    for (const entry of entries) {
+        const parts = entry.split(';');
+        for (const part of parts) {
+            const [key, rawValue] = part.split('=', 2);
+            if (!key || !rawValue) continue;
+            if (key.trim().toLowerCase() !== 'for') continue;
+
+            let candidate = rawValue.trim();
+            if (candidate.startsWith('"') && candidate.endsWith('"')) {
+                candidate = candidate.slice(1, -1);
+            }
+
+            // Remove brackets from IPv6 form: [2001:db8::1]:1234
+            if (candidate.startsWith('[')) {
+                const endBracket = candidate.indexOf(']');
+                if (endBracket > 0) {
+                    candidate = candidate.slice(1, endBracket);
+                }
+            }
+
+            const normalized = normalizeIpCandidate(candidate);
+            if (normalized && !isLocalIp(normalized) && normalized.toLowerCase() !== 'unknown') {
+                return normalized;
+            }
+        }
+    }
+
+    return null;
+}
+
 function normalizeEmail(email: string): string {
     const [user = '', domain = ''] = String(email).toLowerCase().split('@');
     const cleanUser = user.split('+')[0];
@@ -46,29 +119,28 @@ function isValidPassword(password: string): boolean {
 }
 
 // ─── Get real client IP (behind proxy / Cloudflare / nginx) ──────────────────
-function getClientIp(request: NextRequest): string {
+function getClientIp(request: NextRequest): string | null {
     const headers = request.headers;
-    
-    // Priority: CF-Connecting-IP > X-Real-IP > X-Forwarded-For > request.ip
-    const cfIp = headers.get('cf-connecting-ip');
-    if (cfIp) return cfIp.trim();
 
-    const realIp = headers.get('x-real-ip');
-    if (realIp) return realIp.trim();
+    // Priority: CF-Connecting-IP > Forwarded > X-Forwarded-For > X-Real-IP > connection/socket
+    const candidates: Array<string | null> = [
+        headers.get('cf-connecting-ip'),
+        parseForwardedHeader(headers.get('forwarded')),
+        headers.get('x-forwarded-for')?.split(',')[0] ?? null,
+        headers.get('x-real-ip'),
+        (request as any).ip ?? null,
+        (request as any)?.connection?.remoteAddress ?? null,
+        (request as any)?.socket?.remoteAddress ?? null,
+    ];
 
-    const forwardedFor = headers.get('x-forwarded-for');
-    if (forwardedFor) {
-        // First IP in the chain is the real client
-        const first = forwardedFor.split(',')[0]?.trim();
-        if (first && first !== '127.0.0.1' && first !== '::1') return first;
+    for (const candidate of candidates) {
+        const normalized = normalizeIpCandidate(candidate);
+        if (normalized && !isLocalIp(normalized)) {
+            return normalized;
+        }
     }
 
-    // Next.js specific connection IP
-    const nextIp = (request as any).ip;
-    if (nextIp && nextIp !== '127.0.0.1' && nextIp !== '::1') return nextIp;
-
-    // Fallback
-    return '0.0.0.0';
+    return null;
 }
 
 // ─── Verify reCAPTCHA token (supports v2 and v3) ────────────────────────────
@@ -213,7 +285,21 @@ export async function POST(request: NextRequest) {
                 await connection.query('ALTER TABLE account ADD COLUMN reg_ip VARCHAR(45) NULL');
             } catch { /* already exists */ }
 
-            if (clientIp && clientIp !== '0.0.0.0') {
+            // Remove localhost artifacts from previous non-proxied setups.
+            await connection.query(
+                `UPDATE account
+                 SET last_ip = NULL, reg_ip = NULL
+                 WHERE last_ip IN ('127.0.0.1', '::1', '::ffff:127.0.0.1')
+                    OR reg_ip IN ('127.0.0.1', '::1', '::ffff:127.0.0.1')
+                    OR last_ip LIKE '127.0.0.1:%'
+                    OR reg_ip LIKE '127.0.0.1:%'
+                    OR last_ip LIKE '::ffff:127.0.0.1:%'
+                    OR reg_ip LIKE '::ffff:127.0.0.1:%'
+                    OR last_ip LIKE '[::1]:%'
+                    OR reg_ip LIKE '[::1]:%'`
+            );
+
+            if (clientIp) {
                 const [ipCheckRows]: any = await connection.query(
                     `SELECT COUNT(*) AS cnt FROM account
                      WHERE last_ip = ? AND joindate >= NOW() - INTERVAL 1 DAY`,
