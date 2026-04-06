@@ -7,6 +7,11 @@ const avatarDir = path.join(process.cwd(), 'public', 'avatares');
 
 type AvatarMap = Record<string, string>;
 
+// ── In-memory cache (evita leer disco en cada request) ───────────────────────
+let _avatarCache: AvatarMap | null = null;
+let _avatarCacheAt = 0;
+const CACHE_TTL_MS = 60_000; // 60 segundos
+
 async function ensureDataFile() {
   await fs.mkdir(dataDir, { recursive: true });
   try {
@@ -17,14 +22,21 @@ async function ensureDataFile() {
 }
 
 export async function readAvatarMap(): Promise<AvatarMap> {
+  const now = Date.now();
+  if (_avatarCache && now - _avatarCacheAt < CACHE_TTL_MS) return _avatarCache;
   await ensureDataFile();
   const raw = await fs.readFile(dataFile, 'utf8');
-  return JSON.parse(raw || '{}') as AvatarMap;
+  _avatarCache = JSON.parse(raw || '{}') as AvatarMap;
+  _avatarCacheAt = now;
+  return _avatarCache;
 }
 
 export async function writeAvatarMap(map: AvatarMap) {
   await ensureDataFile();
   await fs.writeFile(dataFile, JSON.stringify(map, null, 2), 'utf8');
+  // Invalidate cache
+  _avatarCache = map;
+  _avatarCacheAt = Date.now();
 }
 
 export async function listAvailableAvatars() {

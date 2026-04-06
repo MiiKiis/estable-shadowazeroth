@@ -4,7 +4,7 @@ import Stripe from 'stripe';
 export const dynamic = 'force-dynamic';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-  apiVersion: '2025-02-24.acacia', // Use a recent valid API version
+  apiVersion: '2026-02-25.clover',
 });
 
 export async function POST(req: Request) {

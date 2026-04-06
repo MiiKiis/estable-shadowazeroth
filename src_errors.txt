@@ -1,0 +1,16 @@
+﻿src/app/api/payments/stripe/checkout/route.ts(7,3): error TS2322: Type '"2025-02-24.acacia"' is not assignable to type '"2026-02-25.clover"'.
+src/app/api/payments/stripe/webhook/route.ts(7,3): error TS2322: Type '"2024-12-18.acacia"' is not assignable to type '"2026-02-25.clover"'.
+src/app/api/register/route.ts(67,28): error TS2339: Property 'ip' does not exist on type 'NextRequest'.
+src/app/api/shop/purchase/route.ts(675,7): error TS18004: No value exists in scope for the shorthand property 'userId'. Either declare one or provide an initializer.
+src/app/api/shop/purchase/route.ts(676,7): error TS18004: No value exists in scope for the shorthand property 'itemId'. Either declare one or provide an initializer.
+src/app/api/shop/purchase/route.ts(677,7): error TS18004: No value exists in scope for the shorthand property 'currency'. Either declare one or provide an initializer.
+src/app/api/shop/purchase/route.ts(678,7): error TS18004: No value exists in scope for the shorthand property 'isGift'. Either declare one or provide an initializer.
+src/app/armory/marketplace/page.tsx(604,38): error TS2322: Type '"high-quality"' is not assignable to type 'ImageRendering | undefined'.
+src/app/dashboard/page.tsx(1169,36): error TS2339: Property 'service_type' does not exist on type 'PurchaseHistoryRow'.
+src/app/dashboard/page.tsx(1171,40): error TS2339: Property 'service_type' does not exist on type 'PurchaseHistoryRow'.
+src/app/dashboard/page.tsx(1171,83): error TS2339: Property 'service_type' does not exist on type 'PurchaseHistoryRow'.
+src/app/dashboard/page.tsx(1176,36): error TS2339: Property 'service_type' does not exist on type 'PurchaseHistoryRow'.
+src/app/dashboard/page.tsx(1176,79): error TS2339: Property 'service_type' does not exist on type 'PurchaseHistoryRow'.
+src/app/dashboard/page.tsx(1178,40): error TS2339: Property 'service_type' does not exist on type 'PurchaseHistoryRow'.
+src/app/donate/page.tsx(424,83): error TS18048: 'range' is possibly 'undefined'.
+src/app/donate/page.tsx(568,81): error TS2345: Argument of type '{ amount: number; points: number; bonus: number; badge: null; highlight: false; plan: string; }' is not assignable to parameter of type 'SetStateAction<{ valuePerPoint: string; amount: number; points: number; bonus: number; badge: null; highlight: boolean; plan: string; } | { valuePerPoint: string; amount: number; points: number; bonus: number; badge: string; highlight: boolean; plan: string; } | null>'.

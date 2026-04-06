@@ -19,15 +19,14 @@ export async function GET(request: Request) {
   }
 
   const pattern = `%${name}%`;
-  const baseQuery = `SELECT guid, name, class, race, level
-                     FROM %TABLE%
-                     WHERE name LIKE ? COLLATE utf8mb4_general_ci
-                     ORDER BY (name = ?) DESC, level DESC, name ASC
-                     LIMIT 20`;
 
   try {
     const [rows] = await pool.query<ArmorySearchRow[]>(
-      baseQuery.replace('%TABLE%', 'characters'),
+      `SELECT guid, name, class, race, level
+       FROM characters
+       WHERE name LIKE ? COLLATE utf8mb4_general_ci
+       ORDER BY (name = ?) DESC, level DESC, name ASC
+       LIMIT 20`,
       [pattern, name]
     );
 
@@ -35,23 +34,11 @@ export async function GET(request: Request) {
       characters: rows,
       total: rows.length,
     });
-  } catch {
-    try {
-      const [rows] = await pool.query<ArmorySearchRow[]>(
-        baseQuery.replace('%TABLE%', 'acore_characters.characters'),
-        [pattern, name]
-      );
-
-      return NextResponse.json({
-        characters: rows,
-        total: rows.length,
-      });
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Error desconocido';
-      return NextResponse.json(
-        { error: 'Error buscando personaje en Armería', details: message },
-        { status: 500 }
-      );
-    }
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Error desconocido';
+    return NextResponse.json(
+      { error: 'Error buscando personaje en Armería', details: message },
+      { status: 500 }
+    );
   }
 }

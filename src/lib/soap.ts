@@ -1,10 +1,11 @@
 import { Buffer } from 'buffer';
+import { getSoapUrl } from './db';
 
 /**
  * Ejecuta un comando en el servidor AzerothCore vía SOAP.
  */
 export async function executeSoapCommand(command: string) {
-  const soapEndpoint = process.env.ACORE_SOAP_URL;
+  const soapEndpoint = await getSoapUrl();
   const soapUser = process.env.ACORE_SOAP_USER;
   const soapPassword = process.env.ACORE_SOAP_PASSWORD;
 
@@ -49,8 +50,9 @@ export async function executeSoapCommand(command: string) {
     }
 
     return { skipped: false, response: text };
-  } catch (error: any) {
-    console.error('❌ Error ejecutando SOAP:', error.message);
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : 'Error desconocido';
+    console.error('❌ Error ejecutando SOAP:', errorMsg);
     throw error;
   }
 }

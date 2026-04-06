@@ -12,6 +12,11 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Root level utility and config files
+    "*.js",
+    "*.mjs",
+    "scripts/*.js",
+    "node_modules/**",
   ]),
 ]);
 

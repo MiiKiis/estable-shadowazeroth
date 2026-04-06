@@ -47,12 +47,9 @@ function isValidPassword(password: string): boolean {
 
 // ─── Get real client IP (behind proxy / Cloudflare / nginx) ──────────────────
 function getClientIp(request: NextRequest): string {
-    // 0. Next.js specific ip (if available, mostly on Vercel)
-    const nextIp = request.ip;
-    if (nextIp) return nextIp;
-
     const headers = request.headers;
-    // Priority: CF-Connecting-IP > X-Real-IP > X-Forwarded-For > fallback
+    
+    // Priority: CF-Connecting-IP > X-Real-IP > X-Forwarded-For > request.ip
     const cfIp = headers.get('cf-connecting-ip');
     if (cfIp) return cfIp.trim();
 
@@ -66,7 +63,11 @@ function getClientIp(request: NextRequest): string {
         if (first && first !== '127.0.0.1' && first !== '::1') return first;
     }
 
-    // Fallback (will be 127.0.0.1 in dev, but real IP in production)
+    // Next.js specific connection IP
+    const nextIp = (request as any).ip;
+    if (nextIp && nextIp !== '127.0.0.1' && nextIp !== '::1') return nextIp;
+
+    // Fallback
     return '0.0.0.0';
 }
 
@@ -215,7 +216,7 @@ export async function POST(request: NextRequest) {
             if (clientIp && clientIp !== '0.0.0.0') {
                 const [ipCheckRows]: any = await connection.query(
                     `SELECT COUNT(*) AS cnt FROM account
-                     WHERE last_ip = ? AND DATE(joindate) = CURDATE()`,
+                     WHERE last_ip = ? AND joindate >= NOW() - INTERVAL 1 DAY`,
                     [clientIp]
                 );
                 const recentRegistrations = Number(ipCheckRows?.[0]?.cnt || 0);

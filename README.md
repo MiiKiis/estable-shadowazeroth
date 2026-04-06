@@ -1,36 +1,43 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🐺 Shadow Azeroth - Portal Web Moderno
 
-## Getting Started
+Infraestructura web premium para AzerothCore 3.3.5a, construida con Next.js y protegida por un túnel SSH transparente.
 
-First, run the development server:
+## 🛠️ Flujo de Trabajo (VS Code -> VPS)
 
+Este proyecto está configurado para que puedas desarrollar localmente en tu ordenador mientras usas los datos reales de tu servidor.
+
+### 🏠 1. Desarrollo Local (Modo Túnel)
+Mientras trabajas en VS Code:
+- En tu archivo `.env.local`, asegúrate de que `SSH_ENABLED=true`.
+- Completa tus datos de `SSH_HOST`, `SSH_USER` y `SSH_PASSWORD`.
+- Ejecuta `npm run dev`. El sistema creará un túnel **multipuerto** para:
+  - **MySQL (3306)**: Para personajes, foro y cuentas.
+  - **SOAP (7878)**: Para enviar ítems y comandos al juego.
+
+### 🌐 2. Producción (Despliegue Final en VPS)
+Cuando lleves la carpeta al VPS para que los jugadores la usen:
+- Edita el archivo `.env` del servidor y pon `SSH_ENABLED=false`.
+- La web se conectará directamente a `127.0.0.1` sin necesidad de túneles, aprovechando el rendimiento máximo local.
+- Ejecuta `npm run build` y luego `npm start`.
+
+---
+
+## 🔍 Verificación del Sistema
+Para confirmar que tu PC local puede hablar con la base de datos de tu VPS, ejecuta:
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npx ts-node scripts/verify-connection.ts
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 📦 Características Principales
+- **Dashboard Premium**: Con visualización de personajes y facción integrada.
+- **Tienda Avanzada**: Soporta envío de ítems vía SOAP y pagos automáticos por PayPal.
+- **Seguridad**: reCAPTCHA v3 y detección de IP real para proteger el registro.
+- **Foro Integrado**: Sistema de categorías y perfiles sincronizados.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 🚀 Instalación Inicial
+1. Instalar dependencias: `npm install`
+2. Configurar entorno: `.env.local`
+3. Preparar DB: Ejecutar el script `acore-auth-web-schema.sql` en tu base de datos `acore_auth`.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+---
+© 2026 Admin Miikiis — Shadow Azeroth World.

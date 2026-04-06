@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { authPool } from '@/lib/db';
 import { readAvatarMap } from '@/lib/avatarStore';
+import { getAccountAccessSchema, getGMLevel } from '@/lib/gmLevel';
 
 function resolveRole(gmlevel: number | null): string {
   const lvl = Number(gmlevel ?? 0);
@@ -27,27 +28,40 @@ export async function GET(
     const { searchParams } = new URL(request.url);
     const requestingUserId = Number(searchParams.get('userId') || 0);
 
-    const [rows]: any = await authPool.query(
-      `SELECT
-         c.id,
-         c.comment,
-         c.created_at,
-         c.updated_at,
-         a.id         AS author_id,
-         a.username,
-         MAX(aa.gmlevel) AS gmlevel
-       FROM forum_comments c
-       JOIN account a           ON c.author_id = a.id
-       LEFT JOIN account_access aa ON a.id = aa.id
-       WHERE c.topic_id = ?
-       GROUP BY c.id, a.id, a.username
-       ORDER BY c.created_at ASC`,
-      [topicId]
-    );
+    const schema = await getAccountAccessSchema();
 
-    const avatarMap = await readAvatarMap();
+    // Paralelizar: query de comentarios + avatares + check de GM al mismo tiempo
+    const gmCheckPromise = requestingUserId > 0
+      ? getGMLevel(requestingUserId).then(lvl => [[{ gmlevel: lvl }]])
+      : Promise.resolve([[{ gmlevel: 0 }]]);
 
-    const comments = rows.map((r: any) => {
+    const [
+      [rows],
+      avatarMap,
+      [gmRows],
+    ] = await Promise.all([
+      authPool.query<any[]>(
+        `SELECT
+           c.id,
+           c.comment,
+           c.created_at,
+           c.updated_at,
+           a.id         AS author_id,
+           a.username,
+           MAX(aa.\`${schema.gmCol}\`) AS gmlevel
+         FROM forum_comments c
+         JOIN account a           ON c.author_id = a.id
+         LEFT JOIN account_access aa ON a.id = aa.\`${schema.idCol}\`
+         WHERE c.topic_id = ?
+         GROUP BY c.id, a.id, a.username
+         ORDER BY c.created_at ASC`,
+        [topicId]
+      ),
+      readAvatarMap(),
+      gmCheckPromise,
+    ]);
+
+    const comments = (rows as any[]).map((r: any) => {
       const role = resolveRole(r.gmlevel);
       return {
         id: r.id,
@@ -64,17 +78,9 @@ export async function GET(
       };
     });
 
-    let isGM = false;
-    let isStaff = false;
-    if (requestingUserId > 0) {
-      const [gmRows]: any = await authPool.query(
-        'SELECT MAX(gmlevel) AS gmlevel FROM account_access WHERE id = ?',
-        [requestingUserId]
-      );
-      const gmLevel = Number(gmRows?.[0]?.gmlevel ?? 0);
-      isGM = gmLevel >= 3;
-      isStaff = gmLevel >= 1;
-    }
+    const gmLevel = Number((gmRows as any[])?.[0]?.gmlevel ?? 0);
+    const isGM    = gmLevel >= 3;
+    const isStaff = gmLevel >= 1;
 
     return NextResponse.json({ comments, isGM, isStaff }, { status: 200 });
   } catch (e: any) {
@@ -184,11 +190,7 @@ export async function DELETE(
     const isAuthor = commentRows[0].author_id === userId;
 
     if (!isAuthor) {
-      const [gmRows]: any = await authPool.query(
-        'SELECT MAX(gmlevel) AS gmlevel FROM account_access WHERE id = ?',
-        [userId]
-      );
-      const gmlevel = Number(gmRows?.[0]?.gmlevel ?? 0);
+      const gmlevel = await getGMLevel(userId);
       if (gmlevel < 3) return NextResponse.json({ error: 'No tienes permiso para eliminar este comentario' }, { status: 403 });
     }
 

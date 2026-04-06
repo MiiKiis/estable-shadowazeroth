@@ -38,8 +38,9 @@ export default function DarDpAdminForm() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'No se encontró la cuenta.');
       setFoundAccount(data.account);
-    } catch (err: any) {
-      setSearchError(err.message || 'Error buscando la cuenta.');
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : 'Error buscando la cuenta.';
+      setSearchError(errorMsg);
     } finally {
       setSearching(false);
     }
@@ -76,8 +77,9 @@ export default function DarDpAdminForm() {
       setSuccessMsg(`✅ ${amount} ${currencyName} entregados correctamente a ${foundAccount.username}. Ahora tiene ${newAmount} ${currencyName}.`);
       setFoundAccount(prev => prev ? { ...prev, [currency]: newAmount } : null);
       setAmount('');
-    } catch (err: any) {
-      setSendError(err.message || 'Error de conexión.');
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : 'Error de conexión.';
+      setSendError(errorMsg);
     } finally {
       setSending(false);
     }

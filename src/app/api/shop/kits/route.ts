@@ -1,15 +1,5 @@
-
 import { NextRequest, NextResponse } from 'next/server';
-import mysql from 'mysql2/promise';
-import { authPool } from '@/lib/db';
-
-const dbConfig = {
-  host: process.env.DB_HOST || '127.0.0.1',
-  port: Number(process.env.DB_PORT || 3306),
-  user: process.env.DB_USER || 'blizzcms',
-  password: process.env.DB_PASSWORD || process.env.DB_PASS || '',
-  database: process.env.DB_WORLD || 'acore_world',
-};
+import { authPool, worldPool } from '@/lib/db';
 
 export async function GET(req: NextRequest) {
   try {
@@ -39,13 +29,14 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ items: [] }, { status: 200 });
     }
 
-    const conn = await mysql.createConnection(dbConfig);
-    const [itemsRows] = await conn.query(
-      `SELECT entry, name FROM item_template WHERE entry IN (${itemIds.join(',')})`
-    ) as any[];
-    await conn.end();
+    // Consultar item_template desde worldPool (acore_world) via SSH ────────────
+    const placeholders = itemIds.map(() => '?').join(',');
+    const [itemsRows]: any = await worldPool.query(
+      `SELECT entry, name FROM item_template WHERE entry IN (${placeholders})`,
+      itemIds
+    );
 
-    // Obtener iconos desde Wowhead en paralelo
+    // Obtener iconos desde Wowhead en paralelo ─────────────────────────────────
     const itemsWithIcons = await Promise.all(
       itemsRows.map(async (row: any) => {
         try {

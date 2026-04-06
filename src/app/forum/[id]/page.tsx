@@ -8,6 +8,7 @@ import {
   ArrowLeft, MessageSquare, Pin, Lock, Eye,
   Send, AlertTriangle, Clock, ShieldCheck,
   Edit2, Trash2, CornerUpLeft,
+  Bold, Italic, Underline, AlignCenter, Image as ImageIcon, Type, Palette
 } from 'lucide-react';
 
 type Author = {
@@ -51,6 +52,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   guild:   'Hermandades',
   reports: 'Denuncias',
   suggestions: 'Sugerencias',
+  migrations: 'Migraciones',
 };
 
 function formatDate(dateStr: string): string {
@@ -72,11 +74,10 @@ function parseBBCode(text: string): string {
   return text
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/\n/g, '<br/>')
     .replace(/\[b\](.*?)\[\/b\]/gi, "<strong>$1</strong>")
     .replace(/\[i\](.*?)\[\/i\]/gi, "<em>$1</em>")
     .replace(/\[u\](.*?)\[\/u\]/gi, "<u>$1</u>")
-    .replace(/\[center\]([\s\S]*?)\[\/center\]/gi, "<div class='text-center'>$1</div>")
+    .replace(/\[center\]([\s\S]*?)\[\/center\]/gi, "<div class='text-center w-full'>$1</div>")
     .replace(/\[img\](.*?)\[\/img\]/gi, "<img src='$1' class='max-w-full rounded-md shadow-[0_0_15px_rgba(168,85,247,0.4)] my-2 border border-purple-500/30' alt='Imagen adjunta' />")
     .replace(/\[color=(.*?)\](.*?)\[\/color\]/gi, "<span style='color:$1'>$2</span>")
     .replace(/\[size=(.*?)\](.*?)\[\/size\]/gi, "<span style='font-size:$1'>$2</span>")
@@ -84,10 +85,7 @@ function parseBBCode(text: string): string {
 }
 
 function renderCommentContent(comment: string, role: string) {
-  if (role === 'GM' || role === 'Moderador') {
-    return <div className="text-gray-100 leading-relaxed break-words text-[15px] max-w-none" dangerouslySetInnerHTML={{ __html: parseBBCode(comment) }} />;
-  }
-  return <p className="text-gray-100 leading-relaxed whitespace-pre-wrap break-words text-[15px]">{comment}</p>;
+  return <div className="text-gray-100 leading-relaxed whitespace-pre-wrap break-words text-[15px] max-w-none" dangerouslySetInnerHTML={{ __html: parseBBCode(comment) }} />;
 }
 
 function AvatarColumn({ author, postIndex }: { author: Author; postIndex: number }) {
@@ -154,6 +152,36 @@ export default function TopicPage() {
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const replyRef  = useRef<HTMLTextAreaElement>(null);
+
+  const insertBBCode = (openTag: string, closeTag: string) => {
+    if (!replyRef.current) return;
+    const el = replyRef.current;
+    const start = el.selectionStart;
+    const end = el.selectionEnd;
+    const text = el.value;
+    
+    const before = text.substring(0, start);
+    const selected = text.substring(start, end);
+    const after = text.substring(end, text.length);
+
+    const newText = before + openTag + selected + closeTag + after;
+    setReply(newText);
+    
+    // Reposition cursor
+    setTimeout(() => {
+      el.focus();
+      el.setSelectionRange(start + openTag.length + selected.length, start + openTag.length + selected.length);
+    }, 0);
+  };
+
+  const insertPromptTag = (tag: string, promptText: string) => {
+    const val = window.prompt(promptText);
+    if (!val) return;
+    if (tag === 'img') insertBBCode(`[img]${val}[/img]`, '');
+    if (tag === 'color') insertBBCode(`[color=${val}]`, '[/color]');
+    if (tag === 'size') insertBBCode(`[size=${val}px]`, '[/size]');
+    if (tag === 'font') insertBBCode(`[font=${val}]`, '[/font]');
+  };
 
   useEffect(() => {
     const raw = localStorage.getItem('user');
@@ -571,15 +599,28 @@ export default function TopicPage() {
                 <MessageSquare className="w-5 h-5" /> Publicar Respuesta
               </h2>
               <form onSubmit={handlePost} className="space-y-4">
-                <textarea
-                  ref={replyRef}
-                  placeholder="Escribe tu respuesta aquí..."
-                  rows={6}
-                  className="w-full bg-black/60 border border-purple-900/50 rounded-2xl px-4 py-3 text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500/60 resize-none text-[15px] leading-relaxed"
-                  value={reply}
-                  onChange={e => { setReply(e.target.value); setPostError(''); }}
-                  disabled={posting}
-                />
+                <div className="bg-[#03060d]/60 border border-purple-500/20 rounded-2xl overflow-hidden flex flex-col">
+                  <div className="border-b border-purple-500/20 bg-purple-900/10 p-2 flex flex-wrap gap-1">
+                    <button type="button" onClick={() => insertBBCode('[b]', '[/b]')} className="p-2 hover:bg-purple-900/40 rounded-lg text-gray-300 hover:text-white transition-colors" title="Negrita"><Bold className="w-4 h-4" /></button>
+                    <button type="button" onClick={() => insertBBCode('[i]', '[/i]')} className="p-2 hover:bg-purple-900/40 rounded-lg text-gray-300 hover:text-white transition-colors" title="Cursiva"><Italic className="w-4 h-4" /></button>
+                    <button type="button" onClick={() => insertBBCode('[u]', '[/u]')} className="p-2 hover:bg-purple-900/40 rounded-lg text-gray-300 hover:text-white transition-colors" title="Subrayado"><Underline className="w-4 h-4" /></button>
+                    <div className="w-px h-6 bg-purple-500/20 mx-1 self-center" />
+                    <button type="button" onClick={() => insertBBCode('[center]', '[/center]')} className="p-2 hover:bg-purple-900/40 rounded-lg text-gray-300 hover:text-white transition-colors" title="Centrar"><AlignCenter className="w-4 h-4" /></button>
+                    <div className="w-px h-6 bg-purple-500/20 mx-1 self-center" />
+                    <button type="button" onClick={() => insertPromptTag('color', 'Introduce color hex (ej: #ff0000 o red):')} className="p-2 hover:bg-purple-900/40 rounded-lg text-cyan-300 hover:text-cyan-200 transition-colors" title="Color de Texto"><Palette className="w-4 h-4" /></button>
+                    <button type="button" onClick={() => insertPromptTag('size', 'Introduce tamaño numérico en px (ej: 24):')} className="p-2 hover:bg-purple-900/40 rounded-lg text-cyan-300 hover:text-cyan-200 transition-colors" title="Tamaño de Fuente"><Type className="w-4 h-4" /></button>
+                    <button type="button" onClick={() => insertPromptTag('img', 'Introduce URL de la imagen:')} className="p-2 hover:bg-purple-900/40 rounded-lg text-fuchsia-400 hover:text-fuchsia-300 transition-colors" title="Insertar Imagen"><ImageIcon className="w-4 h-4" /></button>
+                  </div>
+                  <textarea
+                    ref={replyRef}
+                    placeholder="Escribe tu respuesta aquí..."
+                    rows={6}
+                    className="w-full bg-transparent px-5 py-4 text-white placeholder:text-gray-500 focus:outline-none resize-y text-[15px] leading-relaxed block"
+                    value={reply}
+                    onChange={e => { setReply(e.target.value); setPostError(''); }}
+                    disabled={posting}
+                  />
+                </div>
                 {postError && (
                   <div className="flex items-center gap-2 text-rose-300 text-sm">
                     <AlertTriangle className="w-4 h-4 shrink-0" />{postError}

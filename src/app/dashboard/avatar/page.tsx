@@ -3,11 +3,17 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import { ArrowLeft, Lock, Pencil, ShieldCheck } from 'lucide-react';
+
+interface User {
+  id: number;
+  username: string;
+}
 
 export default function AvatarPage() {
   const router = useRouter();
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [avatars, setAvatars] = useState<string[]>([]);
   const [selectedAvatar, setSelectedAvatar] = useState<string | null>(null);
   const [locked, setLocked] = useState(false);
@@ -40,8 +46,9 @@ export default function AvatarPage() {
         setSelectedAvatar(data.selectedAvatar || null);
         setLocked(!!data.locked);
         setEditableAlways(!!data.editableAlways);
-      } catch (err: any) {
-        setError(err.message || 'Error desconocido');
+      } catch (err: unknown) {
+        const errorMsg = err instanceof Error ? err.message : 'Error desconocido';
+        setError(errorMsg);
       } finally {
         setLoading(false);
       }
@@ -74,8 +81,9 @@ export default function AvatarPage() {
       setLocked(!!data.locked);
       setEditableAlways(!!data.editableAlways);
       return true;
-    } catch (err: any) {
-      setError(err.message || 'Error desconocido');
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : 'Error desconocido';
+      setError(errorMsg);
       return false;
     } finally {
       setSaving(false);
@@ -109,7 +117,12 @@ export default function AvatarPage() {
                 <div className="rounded-2xl border border-white/15 bg-[#070d1a] p-5 flex items-center justify-center h-[220px]">
                   {selectedAvatar ? (
                     <div className="relative h-28 w-28 rounded-full overflow-hidden border-4 border-cyan-200/80 shadow-[0_0_25px_rgba(125,211,252,0.35)] bg-black">
-                      <img src={`/avatares/${selectedAvatar}`} alt={selectedAvatar} className="h-full w-full object-contain" />
+                      <Image 
+                        src={`/avatares/${selectedAvatar}`} 
+                        alt={selectedAvatar} 
+                        fill
+                        className="object-contain" 
+                      />
                     </div>
                   ) : (
                     <div className="text-center text-slate-400 font-semibold uppercase tracking-[0.12em] text-xs">Sin avatar seleccionado</div>
@@ -171,10 +184,15 @@ export default function AvatarPage() {
                         type="button"
                         disabled={isDisabled}
                         onClick={() => handleSelectAvatar(avatarFile)}
-                        className={`group rounded-2xl border p-2 text-center transition-all duration-200 ${isSelected ? 'border-cyan-300 bg-cyan-300/10 shadow-[0_0_18px_rgba(125,211,252,0.3)]' : 'border-white/15 bg-white/[0.03] hover:border-cyan-200/60 hover:bg-white/[0.06]'} ${isDisabled && !editableAlways ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
+                        className={`group relative rounded-2xl border p-2 text-center transition-all duration-200 ${isSelected ? 'border-cyan-300 bg-cyan-300/10 shadow-[0_0_18px_rgba(125,211,252,0.3)]' : 'border-white/15 bg-white/[0.03] hover:border-cyan-200/60 hover:bg-white/[0.06]'} ${isDisabled && !editableAlways ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
                       >
-                        <div className="mx-auto h-16 w-16 md:h-18 md:w-18 overflow-hidden rounded-full border-2 border-white/20 bg-black">
-                          <img src={`/avatares/${avatarFile}`} alt={avatarFile} className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-200" />
+                        <div className="relative mx-auto h-16 w-16 md:h-18 md:w-18 overflow-hidden rounded-full border-2 border-white/20 bg-black">
+                          <Image 
+                            src={`/avatares/${avatarFile}`} 
+                            alt={avatarFile} 
+                            fill
+                            className="object-cover group-hover:scale-105 transition-transform duration-200" 
+                          />
                         </div>
                         <p className="mt-2 text-[11px] text-slate-300 truncate">{avatarFile}</p>
                       </button>
@@ -193,14 +211,14 @@ export default function AvatarPage() {
           <div className="relative my-auto w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl border border-white/20 bg-[#0b1426]/95 p-6 text-center shadow-[0_16px_60px_rgba(0,0,0,0.95)]">
             <h3 className="text-xl font-bold text-white mb-4">Confirmar avatar</h3>
             <div
-              className="mx-auto rounded-full overflow-hidden border-4 border-cyan-300 mb-5 bg-black"
+              className="relative mx-auto rounded-full overflow-hidden border-4 border-cyan-300 mb-5 bg-black"
               style={{ width: 96, height: 96, minWidth: 96, minHeight: 96, maxWidth: 96, maxHeight: 96 }}
             >
-              <img
+              <Image
                 src={`/avatares/${pendingAvatar}`}
                 alt={pendingAvatar}
-                className="block"
-                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                fill
+                className="object-contain"
               />
             </div>
             <p className="text-sm text-slate-300 font-medium mb-6">Estas seguro de elegir este avatar?</p>

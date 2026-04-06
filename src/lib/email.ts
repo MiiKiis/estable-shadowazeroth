@@ -83,12 +83,15 @@ export async function sendPinReminderEmail(toEmail: string, accountName: string,
   let htmlContent = '';
 
   try {
-    const templateResponse: any = await resend!.templates.get(pinTemplateId);
-    const templateHtml = String(templateResponse?.data?.html || '').trim();
-    if (templateHtml) {
-      htmlContent = templateHtml;
+    const templateResponse = await resend!.templates.get(pinTemplateId);
+    if ('data' in templateResponse && templateResponse.data) {
+      const templateData = templateResponse.data as { html?: string };
+      const templateHtml = String(templateData.html || '').trim();
+      if (templateHtml) {
+        htmlContent = templateHtml;
+      }
     }
-  } catch (templateError) {
+  } catch (templateError: unknown) {
     console.warn('No se pudo obtener plantilla de Resend, se usara fallback local:', templateError);
   }
 
@@ -115,4 +118,41 @@ export async function sendPinReminderEmail(toEmail: string, accountName: string,
 
   console.log(`Email enviado a ${toEmail} | ID: ${data?.id || 'sin-id'}`);
   return data;
+}
+
+export async function sendPasswordRecoveryEmail(params: {
+  email: string;
+  username: string;
+  newToken: string;
+}) {
+  if (!canSendEmail()) return { skipped: true };
+
+  await resend!.emails.send({
+    from: defaultFrom,
+    to: params.email,
+    subject: 'Recuperación de cuenta - Shadow Azeroth',
+    html: `
+      <div style="font-family:Arial,sans-serif;background:#090812;color:#f8fafc;padding:24px;line-height:1.6;">
+        <div style="max-width:640px;margin:0 auto;background:#120b1f;border:1px solid rgba(251,146,60,.35);border-radius:18px;overflow:hidden;">
+          <div style="padding:24px 24px 12px;background:linear-gradient(90deg,#3d2206,#101828);">
+            <h1 style="margin:0;font-size:26px;font-weight:800;color:#ffffff;">Recuperación de Contraseña</h1>
+            <p style="margin:8px 0 0;color:#cbd5e1;">Has solicitado recuperar tu cuenta.</p>
+          </div>
+          <div style="padding:24px;">
+            <p style="margin:0 0 12px;">Hola <strong>${params.username}</strong>,</p>
+            <p style="margin:0 0 12px;">Tu contraseña ha sido reseteada por razones de seguridad. Usa la siguiente contraseña provisional para ingresar al servidor y a la web:</p>
+            
+            <div style="margin:24px 0;padding:16px;background:#090812;border:1px solid rgba(251,146,60,.4);border-radius:12px;text-align:center;">
+              <span style="font-family:monospace;font-size:24px;font-weight:bold;color:#fcd34d;letter-spacing:2px;">${params.newToken}</span>
+            </div>
+            
+            <p style="margin:0 0 12px;">Te recomendamos encarecidamente cambiar esta contraseña por una tuya desde el Panel de Usuario una vez inicies sesión.</p>
+            <p style="margin:16px 0 0;color:#fcd34d;font-weight:700;">El equipo de Shadow Azeroth</p>
+          </div>
+        </div>
+      </div>
+    `,
+  });
+
+  return { skipped: false };
 }

@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 
 interface Addon { name: string; url: string; }
 
-let addons: Addon[] = [];
+const addons: Addon[] = [];
 
 export async function GET() {
   return NextResponse.json(addons);

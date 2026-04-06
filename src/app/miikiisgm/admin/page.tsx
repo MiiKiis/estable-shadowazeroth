@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import QrBoliviaAdminForm from './QrBoliviaAdminForm';
 import AdminNewsAddons from './AdminNewsAddons';
 import { useRouter } from 'next/navigation';
@@ -22,6 +22,9 @@ import {
 } from 'lucide-react';
 import DarDpAdminForm from './DarDpAdminForm';
 import AdminForum from './AdminForum';
+import AdminCategories from './AdminCategories';
+import AdminForumSections from './AdminForumSections';
+import { Tag } from 'lucide-react';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 // Profesiones WoW
@@ -138,7 +141,7 @@ function getStoredUser(): { id?: number; username?: string } | null {
 }
 
 // ── Page ──────────────────────────────────────────────────────────────────────
-type AdminTab = 'shop' | 'news' | 'addons' | 'qr' | 'dar_dp' | 'forum';
+type AdminTab = 'shop' | 'categories' | 'news' | 'addons' | 'qr' | 'dar_dp' | 'forum' | 'forum_sections';
 
 export default function AdminShopPage() {
   const router = useRouter();
@@ -166,6 +169,7 @@ export default function AdminShopPage() {
   // tabs
   const [activeTab, setActiveTab] = useState<AdminTab>('shop');
   const [myGmLevel, setMyGmLevel] = useState<number>(0);
+  const [categories, setCategories] = useState<{ id: number; slug: string; name: string; parent_id?: number | null }[]>([]);
 
   // ── Fetch shop items ─────────────────────────────────────────────────────
   const fetchItems = async () => {
@@ -201,6 +205,20 @@ export default function AdminShopPage() {
     }
   };
 
+  const fetchCategories = async () => {
+    const user = getStoredUser();
+    if (!user?.id) return;
+    try {
+      const res = await fetch(`/api/admin/shop/categories?userId=${user.id}`);
+      const data = await res.json();
+      if (res.ok) {
+        setCategories(data.categories || []);
+      }
+    } catch (err) {
+      console.error('Error fetching categories:', err);
+    }
+  };
+
   // ── Effect: check auth on mount ─────────────────────────────────────────
   useEffect(() => {
     setCheckingAuth(true);
@@ -223,6 +241,8 @@ export default function AdminShopPage() {
           setCheckingAuth(false);
           if (lvl < 3) {
             setActiveTab('forum');
+          } else {
+            fetchCategories(); // Carga las categorías solo si es admin >= 3
           }
         }
       })
@@ -329,14 +349,18 @@ export default function AdminShopPage() {
       });
  
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Error al guardar item');
- 
+      if (!res.ok) {
+        const errorMsg = data.details ? `${data.error}: ${data.details}` : (data.error || 'Error al guardar item');
+        throw new Error(errorMsg);
+      }
+
       setNewItem(EMPTY_ITEM);
       setEditingId(null);
       await fetchItems();
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Error de conexión al guardar item';
-      setError(message);
+      const message = err instanceof Error ? err.message : 'Error al guardar item';
+      setError('❌ ERROR: ' + message);
+      console.error('[AdminShop] Error detallado:', err);
     } finally {
       setLoading(false);
     }
@@ -534,12 +558,14 @@ export default function AdminShopPage() {
   const tabs: { id: AdminTab; label: string; icon: React.ReactNode }[] = [
     ...(myGmLevel >= 3 ? [
       { id: 'shop' as AdminTab,   label: 'Tienda',  icon: <Package className="w-4 h-4" /> },
+      { id: 'categories' as AdminTab, label: 'Categorías', icon: <Tag className="w-4 h-4" /> },
       { id: 'news' as AdminTab,   label: 'Noticias', icon: <Newspaper className="w-4 h-4" /> },
       { id: 'addons' as AdminTab, label: 'Addons',  icon: <Puzzle className="w-4 h-4" /> },
       { id: 'qr' as AdminTab,     label: 'QR Pago', icon: <QrCode className="w-4 h-4" /> },
       { id: 'dar_dp' as AdminTab, label: 'Puntos y Estelas',  icon: <Coins className="w-4 h-4" /> },
+      { id: 'forum_sections' as AdminTab, label: 'Secciones Foro', icon: <MessageSquare className="w-4 h-4" /> },
     ] : []),
-    { id: 'forum' as AdminTab, label: 'Foro', icon: <MessageSquare className="w-4 h-4" /> }
+    { id: 'forum' as AdminTab, label: 'Post Foro', icon: <MessageSquare className="w-4 h-4" /> }
   ];
 
   // ── Render: main panel ───────────────────────────────────────────────────
@@ -581,6 +607,12 @@ export default function AdminShopPage() {
       <div className="w-full max-w-[1400px] mx-auto px-4 sm:px-8">
         {/* ── FORUM TAB ─────────────────────────────────────────────────────── */}
         {activeTab === 'forum' && <AdminForum />}
+
+        {/* ── FORUM SECTIONS TAB ─────────────────────────────────────────────────────── */}
+        {activeTab === 'forum_sections' && <AdminForumSections />}
+
+        {/* ── CATEGORIES TAB ─────────────────────────────────────────────────────── */}
+        {activeTab === 'categories' && <AdminCategories />}
 
         {/* ── SHOP TAB ─────────────────────────────────────────────────────── */}
         {activeTab === 'shop' && (
@@ -688,18 +720,24 @@ export default function AdminShopPage() {
                       <select
                         value={newItem.category}
                         onChange={e => setNewItem(p => ({ ...p, category: e.target.value }))}
-                        className="w-full bg-black/50 border border-purple-500/30 rounded-xl px-5 py-3.5 text-white focus:outline-none focus:ring-2 focus:ring-cyan-400/60 transition-all text-sm cursor-pointer"
+                        className="w-full bg-[#0a0a1a] border border-purple-500/30 rounded-xl px-5 py-3.5 text-white focus:outline-none focus:ring-2 focus:ring-cyan-400/60 transition-all text-sm cursor-pointer"
                       >
-                        <option value="pve">PvE (Tiers)</option>
-                        <option value="pvp">PvP Content</option>
-                        <option value="profesiones">Profesiones</option>
-                        <option value="wotlk">Wrath of the Lich King</option>
-                        <option value="tbc">The Burning Crusade</option>
-                        <option value="monturas">Monturas y Mascotas</option>
-                        <option value="transmo">Transfiguración</option>
-                        <option value="oro">Oro</option>
-                        <option value="boost">Servicios</option>
-                        <option value="misc">Otros</option>
+                        {/* Secciones Principales y sus subsecciones indented */}
+                        {categories.filter(c => !c.parent_id || Number(c.parent_id) === 0).map(main => (
+                          <React.Fragment key={main.id}>
+                            <option value={main.slug} style={{ backgroundColor: '#0a0a1a', color: '#00f2ff', fontWeight: 'bold' }}>
+                              {main.name}
+                            </option>
+                            {categories.filter(sub => sub.parent_id !== null && Number(sub.parent_id) === main.id).map(sub => (
+                              <option key={sub.id} value={sub.slug} style={{ backgroundColor: '#0a0a1a', color: '#e5e7eb' }}>
+                                &nbsp;&nbsp;» {sub.name}
+                              </option>
+                            ))}
+                          </React.Fragment>
+                        ))}
+                        {categories.length === 0 && (
+                          <option value="misc" className="bg-[#0a0a1a] text-white">Otros</option>
+                        )}
                       </select>
                     </div>
                     {/* Quality */}
@@ -708,13 +746,13 @@ export default function AdminShopPage() {
                       <select
                         value={newItem.quality}
                         onChange={e => setNewItem(p => ({ ...p, quality: e.target.value }))}
-                        className="w-full bg-black/50 border border-purple-500/30 rounded-xl px-5 py-3.5 text-white focus:outline-none focus:ring-2 focus:ring-cyan-400/60 transition-all text-sm cursor-pointer"
+                        className="w-full bg-[#0a0a1a] border border-purple-500/30 rounded-xl px-5 py-3.5 text-white focus:outline-none focus:ring-2 focus:ring-cyan-400/60 transition-all text-sm cursor-pointer"
                       >
-                        <option value="comun">Común</option>
-                        <option value="poco_comun">Poco Común</option>
-                        <option value="raro">Raro</option>
-                        <option value="epico">Épico</option>
-                        <option value="legendario">Legendario</option>
+                        <option value="comun" className="bg-[#0a0a1a] text-white">Común</option>
+                        <option value="poco_comun" className="bg-[#0a0a1a] text-white">Poco Común</option>
+                        <option value="raro" className="bg-[#0a0a1a] text-white">Raro</option>
+                        <option value="epico" className="bg-[#0a0a1a] text-white">Épico</option>
+                        <option value="legendario" className="bg-[#0a0a1a] text-white">Legendario</option>
                       </select>
                     </div>
                   </div>
@@ -767,15 +805,15 @@ export default function AdminShopPage() {
                             bundleItems: bItems 
                           }));
                         }}
-                        className="w-full bg-cyan-950/20 border border-cyan-500/30 rounded-xl px-5 py-4 font-bold text-cyan-100 hover:border-cyan-400 transition-all cursor-pointer"
+                        className="w-full bg-[#0a0a1a] border border-cyan-500/30 rounded-xl px-5 py-4 font-bold text-cyan-100 hover:border-cyan-400 transition-all cursor-pointer"
                       >
-                        <option value="none" className="bg-gray-900">Items / Equipo Físico (Por Correo)</option>
-                        <option value="name_change" className="bg-gray-900">Cambio de Nombre</option>
-                        <option value="race_change" className="bg-gray-900">Cambio de Raza</option>
-                        <option value="faction_change" className="bg-gray-900">Cambio de Facción</option>
-                        <option value="level_boost" className="bg-gray-900">Instant Level Boost</option>
-                        <option value="gold_pack" className="bg-gray-900">Pack de Oro (Instant)</option>
-                        <option value="profession" className="bg-gray-900">Profesión / Skill (Instant)</option>
+                        <option value="none" className="bg-[#0a0a1a] text-white">Items / Equipo Físico (Por Correo)</option>
+                        <option value="name_change" className="bg-[#0a0a1a] text-white">Cambio de Nombre</option>
+                        <option value="race_change" className="bg-[#0a0a1a] text-white">Cambio de Raza</option>
+                        <option value="faction_change" className="bg-[#0a0a1a] text-white">Cambio de Facción</option>
+                        <option value="level_boost" className="bg-[#0a0a1a] text-white">Instant Level Boost</option>
+                        <option value="gold_pack" className="bg-[#0a0a1a] text-white">Pack de Oro (Instant)</option>
+                        <option value="profession" className="bg-[#0a0a1a] text-white">Profesión / Skill (Instant)</option>
                       </select>
                     </div>
                     
@@ -813,11 +851,11 @@ export default function AdminShopPage() {
                                   const newName = !newItem.name || PROFESSIONS_LIST.some(p => p.name === newItem.name) ? (prof?.name || '') : newItem.name;
                                   setNewItem(p => ({ ...p, name: newName, bundleItems: [{ id: tid, count: '1' }] }));
                                 }}
-                                className="w-full bg-black/50 border border-pink-500/30 rounded-xl px-5 py-3.5 text-white focus:outline-none focus:ring-2 focus:ring-pink-400/60"
+                                className="w-full bg-[#0a0a1a] border border-pink-500/30 rounded-xl px-5 py-3.5 text-white focus:outline-none focus:ring-2 focus:ring-pink-400/60 transition-all cursor-pointer"
                               >
-                                <option value="">-- Seleccionar --</option>
+                                <option value="" className="bg-[#0a0a1a] text-white">-- Seleccionar --</option>
                                 {PROFESSIONS_LIST.map(prof => (
-                                  <option key={prof.id} value={prof.id}>{prof.name}</option>
+                                  <option key={prof.id} value={prof.id} className="bg-[#0a0a1a] text-white">{prof.name}</option>
                                 ))}
                               </select>
                             </div>
@@ -1022,34 +1060,34 @@ export default function AdminShopPage() {
                         <select
                           value={newItem.tier}
                           onChange={e => setNewItem(p => ({ ...p, tier: e.target.value }))}
-                          className="w-full bg-black/50 border border-purple-500/30 rounded-xl px-4 py-3.5 text-white text-sm focus:ring-2 focus:ring-purple-400/60 transition-all cursor-pointer"
+                          className="w-full bg-[#0a0a1a] border border-purple-500/30 rounded-xl px-4 py-3.5 text-white text-sm focus:ring-2 focus:ring-purple-400/60 transition-all cursor-pointer"
                         >
                           {newItem.category === 'pve' ? (
                             <>
-                              <option value="0">-- Sin Tier --</option>
-                              {[1,2,3,4,5,6,7,8,9,10,11].map(t => <option key={t} value={t}>Tier {t}</option>)}
+                              <option value="0" className="bg-[#0a0a1a] text-white">-- Sin Tier --</option>
+                              {[1,2,3,4,5,6,7,8,9,10,11].map(t => <option key={t} value={t} className="bg-[#0a0a1a] text-white">Tier {t}</option>)}
                             </>
                           ) : newItem.category === 'monturas' ? (
                             <>
-                              <option value="0">General</option>
-                              <option value="1">Terrestre</option>
-                              <option value="2">Voladora</option>
+                              <option value="0" className="bg-[#0a0a1a] text-white">General</option>
+                              <option value="1" className="bg-[#0a0a1a] text-white">Terrestre</option>
+                              <option value="2" className="bg-[#0a0a1a] text-white">Voladora</option>
                             </>
                           ) : newItem.category === 'transmo' ? (
                             <>
-                              <option value="0">General</option>
-                              <option value="1">Tela</option>
-                              <option value="2">Cuero</option>
-                              <option value="3">Malla</option>
-                              <option value="4">Placas</option>
-                              <option value="5">Armas/Otros</option>
+                              <option value="0" className="bg-[#0a0a1a] text-white">General</option>
+                              <option value="1" className="bg-[#0a0a1a] text-white">Tela</option>
+                              <option value="2" className="bg-[#0a0a1a] text-white">Cuero</option>
+                              <option value="3" className="bg-[#0a0a1a] text-white">Malla</option>
+                              <option value="4" className="bg-[#0a0a1a] text-white">Placas</option>
+                              <option value="5" className="bg-[#0a0a1a] text-white">Armas/Otros</option>
                             </>
                           ) : (
                             <>
-                              <option value="0">General</option>
-                              <option value="60">Nivel 60</option>
-                              <option value="70">Nivel 70</option>
-                              <option value="80">Nivel 80</option>
+                              <option value="0" className="bg-[#0a0a1a] text-white">General</option>
+                              <option value="60" className="bg-[#0a0a1a] text-white">Nivel 60</option>
+                              <option value="70" className="bg-[#0a0a1a] text-white">Nivel 70</option>
+                              <option value="80" className="bg-[#0a0a1a] text-white">Nivel 80</option>
                             </>
                           )}
                         </select>
@@ -1071,11 +1109,11 @@ export default function AdminShopPage() {
                         <select
                           value={newItem.faction}
                           onChange={e => setNewItem(p => ({ ...p, faction: e.target.value }))}
-                          className="w-full bg-black/50 border border-orange-500/50 rounded-xl px-4 py-3.5 text-white text-sm cursor-pointer"
+                          className="w-full bg-[#0a0a1a] border border-orange-500/50 rounded-xl px-4 py-3.5 text-white text-sm cursor-pointer"
                         >
-                          <option value="all">Ambas (Horda y Alianza)</option>
-                          <option value="horda">Horda Únicamente</option>
-                          <option value="alianza">Alianza Únicamente</option>
+                          <option value="all" className="bg-[#0a0a1a] text-white">Ambas (Horda y Alianza)</option>
+                          <option value="horda" className="bg-[#0a0a1a] text-white">Horda Únicamente</option>
+                          <option value="alianza" className="bg-[#0a0a1a] text-white">Alianza Únicamente</option>
                         </select>
                       </div>
                     )}
@@ -1261,6 +1299,17 @@ export default function AdminShopPage() {
           <DarDpAdminForm />
         )}
       </div>
+      {/* Estilos Globales para forzar legibilidad en selects */}
+      <style jsx global>{`
+        select option {
+          background-color: #0a0a1a !important;
+          color: white !important;
+          padding: 10px !important;
+        }
+        select option:hover {
+          background-color: #1e1e3f !important;
+        }
+      `}</style>
     </div>
   );
 }

@@ -20,8 +20,8 @@ export default function QrBoliviaAdminForm() {
 
   useEffect(() => {
     fetch('/api/payments/qr-bolivia')
-      .then(res => res.json())
-      .then(data => {
+      .then(async (res) => {
+        const data = await res.json();
         setFormData({
           imageUrl: data.imageUrl || '',
           bankName: data.bankName || '',
@@ -55,8 +55,9 @@ export default function QrBoliviaAdminForm() {
       setSuccess('Datos del QR y Transferencia actualizados correctamente');
       
       setTimeout(() => setSuccess(''), 4000);
-    } catch (err: any) {
-      setError(err.message || 'Error desconocido');
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : 'Error desconocido';
+      setError(errorMsg);
     } finally {
       setLoading(false);
     }

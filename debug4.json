@@ -1,0 +1,8 @@
+﻿{
+    "account_access":  [
+                           {
+                               "Table":  "account_access",
+                               "Create Table":  "CREATE TABLE `account_access` (\n  `AccountID` int unsigned NOT NULL,\n  `SecurityLevel` tinyint unsigned NOT NULL,\n  `RealmID` int NOT NULL DEFAULT \u0027-1\u0027,\n  `Comment` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  PRIMARY KEY (`AccountID`,`RealmID`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+                           }
+                       ]
+}

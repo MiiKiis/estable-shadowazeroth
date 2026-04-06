@@ -1,47 +1,16 @@
 import { NextResponse } from 'next/server';
 import { authPool } from '@/lib/db';
+import { getAccountAccessSchema, getGMLevel } from '@/lib/gmLevel';
 
+// Reutiliza la misma promise de migración del route padre para no duplicar checks
 async function isGM(userId: number): Promise<boolean> {
-  const [rows]: any = await authPool.query(
-    'SELECT MAX(gmlevel) AS gmlevel FROM account_access WHERE id = ?',
-    [userId]
-  );
-  return Number(rows?.[0]?.gmlevel ?? 0) >= 3;
+  const lvl = await getGMLevel(userId);
+  return lvl >= 3;
 }
 
 async function isStaff(userId: number): Promise<boolean> {
-  const [rows]: any = await authPool.query(
-    'SELECT MAX(gmlevel) AS gmlevel FROM account_access WHERE id = ?',
-    [userId]
-  );
-  return Number(rows?.[0]?.gmlevel ?? 0) >= 1;
-}
-
-let ensureCompletedColumnPromise: Promise<void> | null = null;
-
-async function ensureCompletedColumn(): Promise<void> {
-  if (!ensureCompletedColumnPromise) {
-    ensureCompletedColumnPromise = (async () => {
-      const [rows]: any = await authPool.query(
-        `SELECT 1 AS ok
-         FROM INFORMATION_SCHEMA.COLUMNS
-         WHERE TABLE_SCHEMA = DATABASE()
-           AND TABLE_NAME = 'forum_topics'
-           AND COLUMN_NAME = 'completed'
-         LIMIT 1`
-      );
-
-      if (!rows?.length) {
-        await authPool.query(
-          'ALTER TABLE forum_topics ADD COLUMN completed TINYINT(1) NOT NULL DEFAULT 0 AFTER locked'
-        );
-      }
-    })().catch(() => {
-      // Si falla la migración automática, mantenemos fallback en queries.
-    });
-  }
-
-  await ensureCompletedColumnPromise;
+  const lvl = await getGMLevel(userId);
+  return lvl >= 1;
 }
 
 export async function GET(
@@ -49,45 +18,29 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await ensureCompletedColumn();
-
     const { id: rawId } = await params;
     const id = Number(rawId);
     if (!id || id <= 0) return NextResponse.json({ error: 'ID inválido' }, { status: 400 });
 
-    // Increment view count
-    await authPool.query('UPDATE forum_topics SET views = views + 1 WHERE id = ?', [id]);
+    // Increment view count (fire-and-forget — no espera para no bloquear la respuesta)
+    authPool.query('UPDATE forum_topics SET views = views + 1 WHERE id = ?', [id]).catch(() => {});
 
-    let rows: any[] = [];
-    try {
-      const [withCompleted]: any = await authPool.query(
-        `SELECT
-           t.id, t.title, t.category, t.pinned, t.locked, t.completed, t.views, t.created_at,
-           t.author_id, COALESCE(a.username, '[Deleted]') AS author_username,
-           MAX(aa.gmlevel) AS gmlevel
-         FROM forum_topics t
-         LEFT JOIN account a ON t.author_id = a.id
-         LEFT JOIN account_access aa ON a.id = aa.id
-         WHERE t.id = ?
-         GROUP BY t.id, t.author_id, a.username`,
-        [id]
-      );
-      rows = withCompleted;
-    } catch {
-      const [withoutCompleted]: any = await authPool.query(
-        `SELECT
-           t.id, t.title, t.category, t.pinned, t.locked, 0 AS completed, t.views, t.created_at,
-           t.author_id, COALESCE(a.username, '[Deleted]') AS author_username,
-           MAX(aa.gmlevel) AS gmlevel
-         FROM forum_topics t
-         LEFT JOIN account a ON t.author_id = a.id
-         LEFT JOIN account_access aa ON a.id = aa.id
-         WHERE t.id = ?
-         GROUP BY t.id, t.author_id, a.username`,
-        [id]
-      );
-      rows = withoutCompleted;
-    }
+    const schema = await getAccountAccessSchema();
+
+    const [rows]: any = await authPool.query(
+      `SELECT
+         t.id, t.title, t.category, t.pinned, t.locked,
+         COALESCE(t.completed, 0) AS completed,
+         t.views, t.created_at,
+         t.author_id, COALESCE(a.username, '[Deleted]') AS author_username,
+         MAX(aa.\`${schema.gmCol}\`) AS gmlevel
+       FROM forum_topics t
+       LEFT JOIN account a ON t.author_id = a.id
+       LEFT JOIN account_access aa ON a.id = aa.\`${schema.idCol}\`
+       WHERE t.id = ?
+       GROUP BY t.id, t.author_id, a.username`,
+      [id]
+    );
 
     if (!rows.length) return NextResponse.json({ error: 'Tema no encontrado' }, { status: 404 });
 
@@ -119,14 +72,12 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await ensureCompletedColumn();
-
     const { id: rawId } = await params;
     const topicId = Number(rawId);
     if (!topicId || topicId <= 0) return NextResponse.json({ error: 'ID inválido' }, { status: 400 });
 
     const body = await request.json();
-    const userId = Number(body?.userId || 0);
+    const userId    = Number(body?.userId || 0);
     const completed = Boolean(body?.completed);
 
     if (!userId || userId <= 0) return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
@@ -144,15 +95,8 @@ export async function PATCH(
 
     return NextResponse.json({ success: true, completed }, { status: 200 });
   } catch (e: any) {
-    const details = e?.message || 'Error desconocido';
-    if (String(details).toLowerCase().includes('unknown column')) {
-      return NextResponse.json(
-        { error: 'La base de datos del foro necesita migración', details: 'Agrega la columna completed en forum_topics.' },
-        { status: 500 }
-      );
-    }
     console.error('PATCH /api/forum/topics/[id] error:', e);
-    return NextResponse.json({ error: 'Error actualizando estado del tema', details }, { status: 500 });
+    return NextResponse.json({ error: 'Error actualizando estado del tema', details: e.message }, { status: 500 });
   }
 }
 

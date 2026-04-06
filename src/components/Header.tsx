@@ -6,6 +6,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { LogOut, User, Menu, X, Wallet } from 'lucide-react';
 import CurrencyDisplay, { EstelaIcon } from './CurrencyDisplay';
+import ParallaxImage from './ParallaxImage';
 
 export default function Header() {
   const pathname = usePathname();
@@ -23,7 +24,11 @@ export default function Header() {
       const raw = localStorage.getItem('user');
       if (raw) {
         try {
-          const parsed = JSON.parse(raw);
+          interface UserData {
+            id: string | number;
+            username: string;
+          }
+          const parsed = JSON.parse(raw) as UserData;
           setIsLoggedIn(true);
           setUsername(parsed.username || '');
           setAccountId(Number(parsed.id) || null);
@@ -69,7 +74,12 @@ export default function Header() {
     const loadPoints = async () => {
       try {
         const response = await fetch(`/api/account/points?accountId=${accountId}`, { cache: 'no-store' });
-        const data = await response.json();
+        interface PointsData {
+          dp?: number;
+          vp?: number;
+          error?: string;
+        }
+        const data = await response.json() as PointsData;
 
         if (!response.ok) {
           throw new Error(data?.error || 'No se pudo obtener los puntos');
@@ -108,6 +118,7 @@ export default function Header() {
 
   const navLinks = [
     { name: 'Inicio', href: '/' },
+    ...(isLoggedIn ? [{ name: 'Marketplace', href: '/armory/marketplace' }] : []),
     { name: 'Noticias', href: '/news' },
     { name: 'Foro', href: '/forum' },
     { name: 'Addons', href: '/addons' },
@@ -127,10 +138,13 @@ export default function Header() {
           <div className="relative w-12 h-12 sm:w-16 sm:h-16 shrink-0">
             <div className="absolute inset-0 rounded-full bg-gradient-to-br from-cyan-400/30 to-purple-600/40 blur-md scale-110 group-hover:opacity-100 opacity-70 transition-opacity duration-300" />
             <div className="absolute inset-0 rounded-full border border-cyan-300/40" />
-            <Image
+            <ParallaxImage
               src="/shadow-azeroth.png"
               alt="Shadow Azeroth"
-              fill
+              width={64}
+              height={64}
+              scale={1.4}
+              delay={0.2}
               className="object-cover rounded-full"
             />
           </div>

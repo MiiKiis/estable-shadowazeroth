@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { ResultSetHeader, RowDataPacket } from 'mysql2';
-import pool from '@/lib/db';
+import pool, { worldPool } from '@/lib/db';
 
 interface CharacterRow extends RowDataPacket {
   guid: number;
@@ -362,14 +362,7 @@ export async function GET(
               WHERE guid = ?
               LIMIT 1`,
         params: [numericGuid],
-      },
-      {
-        sql: `SELECT guid, name, race, class, gender, level, money, map, zone, xp, totaltime, online
-              FROM acore_characters.characters
-              WHERE guid = ?
-              LIMIT 1`,
-        params: [numericGuid],
-      },
+      }
     ]);
 
     const character = characters[0] || null;
@@ -382,102 +375,50 @@ export async function GET(
 
     let equipment: EquipmentRow[] = [];
     try {
-      equipment = await runFirstSuccess<EquipmentRow>([
-        {
-          sql: `SELECT ci.slot,
-                       ii.guid AS itemGuid,
-                       ii.itemEntry,
-                       it.name AS itemName,
-                       NULL AS itemIcon,
-                       it.Quality AS quality,
-                       it.ItemLevel AS itemLevel,
-                       it.RequiredLevel AS requiredLevel,
-                       it.InventoryType AS inventoryType,
-                       ii.durability,
-                       ii.creatorGuid,
-                       ii.enchantments,
-                       ii.randomPropertyId,
-                       ii.count
-                FROM character_inventory ci
-                INNER JOIN item_instance ii ON ii.guid = ci.item
-                LEFT JOIN acore_world.item_template it ON it.entry = ii.itemEntry
-                WHERE ci.guid = ?
-                  AND ci.bag = 0
-                  AND ci.slot BETWEEN 0 AND 18
-                ORDER BY ci.slot ASC`,
-          params: [numericGuid],
-        },
-        {
-          sql: `SELECT ci.slot,
-                       ii.guid AS itemGuid,
-                       ii.itemEntry,
-                       NULL AS itemName,
-                       NULL AS itemIcon,
-                       NULL AS quality,
-                       NULL AS itemLevel,
-                       NULL AS requiredLevel,
-                       NULL AS inventoryType,
-                       ii.durability,
-                       ii.creatorGuid,
-                       ii.enchantments,
-                       ii.randomPropertyId,
-                       ii.count
-                FROM character_inventory ci
-                INNER JOIN item_instance ii ON ii.guid = ci.item
-                WHERE ci.guid = ?
-                  AND ci.bag = 0
-                  AND ci.slot BETWEEN 0 AND 18
-                ORDER BY ci.slot ASC`,
-          params: [numericGuid],
-        },
-        {
-          sql: `SELECT ci.slot,
-                       ii.guid AS itemGuid,
-                       ii.itemEntry,
-                       it.name AS itemName,
-                       NULL AS itemIcon,
-                       it.Quality AS quality,
-                       it.ItemLevel AS itemLevel,
-                       it.RequiredLevel AS requiredLevel,
-                       it.InventoryType AS inventoryType,
-                       ii.durability,
-                       ii.creatorGuid,
-                       ii.enchantments,
-                       ii.randomPropertyId,
-                       ii.count
-                FROM acore_characters.character_inventory ci
-                INNER JOIN acore_characters.item_instance ii ON ii.guid = ci.item
-                LEFT JOIN acore_world.item_template it ON it.entry = ii.itemEntry
-                WHERE ci.guid = ?
-                  AND ci.bag = 0
-                  AND ci.slot BETWEEN 0 AND 18
-                ORDER BY ci.slot ASC`,
-          params: [numericGuid],
-        },
-        {
-          sql: `SELECT ci.slot,
-                       ii.guid AS itemGuid,
-                       ii.itemEntry,
-                       NULL AS itemName,
-                       NULL AS itemIcon,
-                       NULL AS quality,
-                       NULL AS itemLevel,
-                       NULL AS requiredLevel,
-                       NULL AS inventoryType,
-                       ii.durability,
-                       ii.creatorGuid,
-                       ii.enchantments,
-                       ii.randomPropertyId,
-                       ii.count
-                FROM acore_characters.character_inventory ci
-                INNER JOIN acore_characters.item_instance ii ON ii.guid = ci.item
-                WHERE ci.guid = ?
-                  AND ci.bag = 0
-                  AND ci.slot BETWEEN 0 AND 18
-                ORDER BY ci.slot ASC`,
-          params: [numericGuid],
-        },
-      ]);
+      // Consultar personaje+equipamiento desde character pool, items desde worldPool
+      const [charInvRows]: any = await pool.query(
+        `SELECT ci.slot,
+                ii.guid AS itemGuid,
+                ii.itemEntry,
+                ii.durability,
+                ii.creatorGuid,
+                ii.enchantments,
+                ii.randomPropertyId,
+                ii.count
+         FROM character_inventory ci
+         INNER JOIN item_instance ii ON ii.guid = ci.item
+         WHERE ci.guid = ?
+           AND ci.bag = 0
+           AND ci.slot BETWEEN 0 AND 18
+         ORDER BY ci.slot ASC`,
+        [numericGuid]
+      );
+
+      // Enriquecer con datos de item_template desde world ──────────────────────
+      const entryIds = [...new Set((charInvRows as any[]).map((r: any) => r.itemEntry).filter((e: number) => e > 0))];
+      const itemDataMap = new Map<number, { name: string; quality: number; itemLevel: number; requiredLevel: number; inventoryType: number }>();
+      if (entryIds.length > 0) {
+        try {
+          const placeholders = entryIds.map(() => '?').join(',');
+          const [templateRows]: any = await worldPool.query(
+            `SELECT entry, name, Quality, ItemLevel, RequiredLevel, InventoryType FROM item_template WHERE entry IN (${placeholders})`,
+            entryIds
+          );
+          for (const t of templateRows) {
+            itemDataMap.set(t.entry, { name: t.name, quality: t.Quality, itemLevel: t.ItemLevel, requiredLevel: t.RequiredLevel, inventoryType: t.InventoryType });
+          }
+        } catch (e) { /* world pool fallo, continuar sin datos de item */ }
+      }
+
+      equipment = (charInvRows as any[]).map((row: any) => ({
+        ...row,
+        itemName: itemDataMap.get(row.itemEntry)?.name ?? null,
+        itemIcon: null,
+        quality: itemDataMap.get(row.itemEntry)?.quality ?? null,
+        itemLevel: itemDataMap.get(row.itemEntry)?.itemLevel ?? null,
+        requiredLevel: itemDataMap.get(row.itemEntry)?.requiredLevel ?? null,
+        inventoryType: itemDataMap.get(row.itemEntry)?.inventoryType ?? null,
+      }));
 
       const uniqueEntries = Array.from(new Set(equipment.map((item) => item.itemEntry).filter((entry) => entry > 0)));
       const iconByEntry = await getIconsForEntries(uniqueEntries);
@@ -498,14 +439,6 @@ export async function GET(
         {
           sql: `SELECT skill, value, max
                 FROM character_skills
-                WHERE guid = ?
-                  AND skill IN (164, 165, 171, 182, 186, 197, 202, 333, 393, 755, 773)
-                ORDER BY value DESC, skill ASC`,
-          params: [numericGuid],
-        },
-        {
-          sql: `SELECT skill, value, max
-                FROM acore_characters.character_skills
                 WHERE guid = ?
                   AND skill IN (164, 165, 171, 182, 186, 197, 202, 333, 393, 755, 773)
                 ORDER BY value DESC, skill ASC`,

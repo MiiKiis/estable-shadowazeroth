@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import pool, { authPool } from '@/lib/db';
+import pool, { authPool, getSoapUrl } from '@/lib/db';
 import crypto from 'crypto';
 
 type Currency = 'vp' | 'dp';
@@ -70,12 +70,12 @@ async function ensurePurchaseHistoryTable(connection: Awaited<ReturnType<typeof 
 // ─── SOAP utilities ──────────────────────────────────────────────────────────
 
 async function executeSoapCommand(command: string) {
-  const soapEndpoint = process.env.ACORE_SOAP_URL;
+  const soapEndpoint = await getSoapUrl();
   const soapUser = process.env.ACORE_SOAP_USER;
   const soapPassword = process.env.ACORE_SOAP_PASSWORD;
 
   if (!soapEndpoint || !soapUser || !soapPassword) {
-    throw new Error('SOAP no está configurado correctamente. Revisa las variables de entorno: ACORE_SOAP_URL, ACORE_SOAP_USER, ACORE_SOAP_PASSWORD.');
+    throw new Error('SOAP no está configurado correctamente. Revisa las variables de entorno: ACORE_SOAP_USER, ACORE_SOAP_PASSWORD.');
   }
 
   const xml = `<?xml version="1.0" encoding="utf-8"?>
@@ -141,7 +141,7 @@ async function executeSoapCommand(command: string) {
   return { skipped: false };
 }
 
-// ─── Mail-based item delivery (writes directly to acore_characters.mail) ─────
+// ─── Mail-based item delivery (TrinityCore compatible) ──────────────────────
 // This is the safest method: items go to mailbox, no inventory overflow risk.
 
 async function sendItemsViaMail(params: {
@@ -149,10 +149,17 @@ async function sendItemsViaMail(params: {
   subject: string;
   body: string;
   items: { entry: number; count: number }[];
-  gold?: number;                               // in gold (will be converted to copper)
+  gold?: number;                               // in gold
 }) {
   const now = Math.floor(Date.now() / 1000);
   const expireTime = now + 30 * 24 * 3600;      // 30 days
+
+  // Get current max IDs to avoid dependence on auto_increment
+  const [maxMailRow]: any = await pool.query('SELECT MAX(id) as maxId FROM mail');
+  let nextMailId = (maxMailRow[0]?.maxId || 0) + 1;
+
+  const [maxInstanceRow]: any = await pool.query('SELECT MAX(guid) as maxGuid FROM item_instance');
+  let nextItemGuid = (maxInstanceRow[0]?.maxGuid || 0) + 1;
 
   // Insert one mail per batch of 12 items (WoW mail limit per message)
   const ITEMS_PER_MAIL = 12;
@@ -168,30 +175,28 @@ async function sendItemsViaMail(params: {
 
   for (let batchIdx = 0; batchIdx < batches.length; batchIdx++) {
     const batch = batches[batchIdx];
-    const goldCopper = batchIdx === 0 ? (params.gold || 0) * 10000 : 0; // gold only on first mail
+    const goldCopper = batchIdx === 0 ? (params.gold || 0) * 10000 : 0;
     const hasItems = batch.length > 0 ? 1 : 0;
+    const mailId = nextMailId++;
 
-    // mailType=3 = normal (creature/npc sent), stationery=41 (default)
-    // has_items flag in mail tells the server to look in mail_items
-    const [mailResult]: any = await pool.query(
-      `INSERT INTO mail (messageType, stationery, sender, receiver, subject, body, has_items, expire_time, deliver_time, money, checked)
-       VALUES (3, 41, 0, ?, ?, ?, ?, ?, ?, ?, 0)`,
-      [params.receiverGuid, params.subject, params.body, hasItems, expireTime, now, goldCopper]
+    // TrinityCore: mailType=0 (Normal), stationery=41, sender=0 (System)
+    await pool.query(
+      `INSERT INTO mail (id, messageType, stationery, sender, receiver, subject, body, has_items, expire_time, deliver_time, money, checked)
+       VALUES (?, 0, 41, 0, ?, ?, ?, ?, ?, ?, ?, 0)`,
+      [mailId, params.receiverGuid, params.subject, params.body, hasItems, expireTime, now, goldCopper]
     );
-
-    const mailId = mailResult?.insertId;
-    if (!mailId) throw new Error('No se pudo crear el correo in-game');
 
     // Insert each item into mail_items
     for (let i = 0; i < batch.length; i++) {
       const item = batch[i];
-      // Generate a unique item_guid by inserting into item_instance first
-      const [instanceResult]: any = await pool.query(
-        `INSERT INTO item_instance (itemEntry, owner_guid, count) VALUES (?, ?, ?)`,
-        [item.entry, params.receiverGuid, item.count]
+      const itemGuid = nextItemGuid++;
+
+      // TrinityCore: item_instance (guid, itemEntry, owner_guid, count, enchantments)
+      const enchantments = '0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ';
+      await pool.query(
+        `INSERT INTO item_instance (guid, itemEntry, owner_guid, count, enchantments) VALUES (?, ?, ?, ?, ?)`,
+        [itemGuid, item.entry, params.receiverGuid, item.count, enchantments]
       );
-      const itemGuid = instanceResult?.insertId;
-      if (!itemGuid) continue;
 
       await pool.query(
         `INSERT INTO mail_items (mail_id, item_guid, receiver) VALUES (?, ?, ?)`,
@@ -216,6 +221,7 @@ function parseItemList(raw: string): { entry: number; count: number }[] {
     .filter(Boolean) as { entry: number; count: number }[];
 }
 
+
 // ─── Boost bundle delivery (level + gold + items via mail) ───────────────────
 
 async function deliverLevelBoost(character: CharacterRow, serviceData: string | null) {
@@ -223,7 +229,6 @@ async function deliverLevelBoost(character: CharacterRow, serviceData: string | 
   let gold = 0;
   let itemsRaw = '';
 
-  // Parse JSON service_data  
   if (serviceData) {
     try {
       const sd = JSON.parse(serviceData);
@@ -231,16 +236,14 @@ async function deliverLevelBoost(character: CharacterRow, serviceData: string | 
       gold = Number(sd.gold) || 0;
       itemsRaw = String(sd.items || '');
     } catch {
-      // Legacy: serviceData is just the level number
       targetLevel = Number(serviceData) || 80;
     }
   }
 
-  // 1. Level boost via SOAP (works if online), DB fallback if offline
+  // 1. Level boost via SOAP (instant for online), DB fallback if offline
   try {
     await executeSoapCommand(`.character level ${character.name} ${targetLevel}`);
   } catch {
-    // DB fallback for offline characters
     await pool.query(
       'UPDATE characters SET level = ? WHERE guid = ? AND level < ?',
       [targetLevel, character.guid, targetLevel]
@@ -253,7 +256,7 @@ async function deliverLevelBoost(character: CharacterRow, serviceData: string | 
     await sendItemsViaMail({
       receiverGuid: character.guid,
       subject: 'Boost de Nivel',
-      body: `Felicidades! Has recibido un boost a nivel ${targetLevel}. Aquí están tus items y recursos.`,
+      body: `¡Felicidades! Has recibido un boost a nivel ${targetLevel}. Aquí están tus objetos y recursos.`,
       items,
       gold,
     });
@@ -278,47 +281,44 @@ async function deliverProfession(character: CharacterRow, itemId: number, servic
     }
   }
 
-  // 1. Set the skill via DB (safe and reliable, no SOAP dependency)
+  const professionRanks: Record<number, number> = {
+    171: 51304, 164: 51300, 333: 51313, 202: 51306, 182: 51296,
+    773: 45363, 755: 51311, 165: 51302, 186: 51294, 393: 51296,
+    197: 51309, 185: 51294, 129: 45542, 356: 51294,
+  };
+
+  const rankSpellId = professionRanks[skillId];
+
   if (skillId > 0) {
     try {
+      if (rankSpellId) await executeSoapCommand(`.learn ${rankSpellId} ${character.name}`);
+      const safeLevel = Math.min(skillLevel, 450);
+      await executeSoapCommand(`.setskill ${skillId} ${safeLevel} ${safeLevel} ${character.name}`);
+    } catch {
+      const safeLevel = Math.min(skillLevel, 450);
       const [existingSkill]: any = await pool.query(
         'SELECT guid FROM character_skills WHERE guid = ? AND skill = ? LIMIT 1',
         [character.guid, skillId]
       );
       if (existingSkill && existingSkill.length > 0) {
-        await pool.query(
-          'UPDATE character_skills SET value = ?, max = ? WHERE guid = ? AND skill = ?',
-          [skillLevel, skillLevel, character.guid, skillId]
-        );
+        await pool.query('UPDATE character_skills SET value = ?, max = ? WHERE guid = ? AND skill = ?', [safeLevel, safeLevel, character.guid, skillId]);
       } else {
-        await pool.query(
-          'INSERT INTO character_skills (guid, skill, value, max) VALUES (?, ?, ?, ?)',
-          [character.guid, skillId, skillLevel, skillLevel]
-        );
-      }
-      console.log(`Profession ${skillId} set to ${skillLevel} for char ${character.guid} via DB.`);
-    } catch (dbErr) {
-      console.error('Profession DB write failed, trying SOAP:', dbErr);
-      // Fallback to SOAP if DB fails (e.g. character is online and skill table locked)
-      try {
-        await executeSoapCommand(`.setskill ${skillId} ${skillLevel} ${skillLevel} ${character.name}`);
-      } catch (soapErr) {
-        throw new Error(`No se pudo aplicar la profesión. Intenta con el personaje desconectado.`);
+        await pool.query('INSERT INTO character_skills (guid, skill, value, max) VALUES (?, ?, ?, ?)', [character.guid, skillId, safeLevel, safeLevel]);
       }
     }
   }
 
-  // 2. Send materials via mail
   const materials = parseItemList(materialsRaw);
   if (materials.length > 0) {
     await sendItemsViaMail({
       receiverGuid: character.guid,
-      subject: 'Kit de Profesion',
-      body: 'Aqui tienes los materiales para tu profesion. Revisa tu buzon!',
+      subject: 'Kit de Profesión',
+      body: 'Aquí tienes los materiales para tu profesión. ¡Revisa tu buzón!',
       items: materials,
     });
   }
 }
+
 
 // ─── SOAP item delivery (legacy / simple items) ──────────────────────────────
 
@@ -335,17 +335,20 @@ async function sendSoapItem(params: {
 
 export async function POST(request: Request) {
   let connection: Awaited<ReturnType<typeof authPool.getConnection>> | null = null;
+  let userId = 0, itemId = 0, isGift = false, chosenCurrency = '', currency = '';
 
   try {
     const body = await request.json();
-    const userId = Number(body?.userId);
-    const itemId = Number(body?.itemId);
+    console.log('🛍️ [SHOP] Iniciando compra/regalo:', { userId: body?.userId, itemId: body?.itemId, char: body?.characterGuid });
+
+    userId = Number(body?.userId);
+    itemId = Number(body?.itemId);
     const characterGuid = body?.characterGuid ? Number(body.characterGuid) : null;
-    const isGift = body?.isGift === true;
+    isGift = body?.isGift === true;
     const pin = String(body?.pin || '').trim();
     
     // ── Buyer chooses currency ───────────────────────────────
-    const chosenCurrency = String(body?.currency || '').toLowerCase();
+    chosenCurrency = String(body?.currency || '').toLowerCase();
 
     if (!Number.isInteger(userId) || userId <= 0 || !Number.isInteger(itemId) || itemId <= 0) {
       return NextResponse.json({ error: 'Parametros invalidos' }, { status: 400 });
@@ -357,7 +360,10 @@ export async function POST(request: Request) {
 
     connection = await authPool.getConnection();
     await ensurePurchaseHistoryTable(connection);
-    await connection.beginTransaction();
+    
+    // Iniciar transacción explícita
+    await connection.query('START TRANSACTION');
+    let transactionStarted = true;
 
     const [itemRows] = await connection.query(
       'SELECT id, name, price, currency, price_dp, price_vp, item_id, soap_item_entry, soap_item_count, service_type, service_data, faction FROM shop_items WHERE id = ? LIMIT 1',
@@ -376,7 +382,6 @@ export async function POST(request: Request) {
     const priceDp = Number(item.price_dp || 0);
     const priceVp = Number(item.price_vp || 0);
     
-    let currency: Currency;
     let price: number;
     
     if (chosenCurrency === 'dp' && priceDp > 0) {
@@ -458,7 +463,8 @@ export async function POST(request: Request) {
 
     const user = users[0];
 
-    if (Number(user[currency]) < price) {
+    const currentBalance = Number(user[currency as Currency] || 0);
+    if (currentBalance < price) {
       await connection.rollback();
       return NextResponse.json({ error: 'Puntos insuficientes' }, { status: 400 });
     }
@@ -568,8 +574,9 @@ export async function POST(request: Request) {
       // Send in-game mail notification
       try {
         const donorName = await getDonorUsername(connection, userId);
+        const itemNameSafe = (item.name || 'un servicio').replace(/"/g, "'");
         await executeSoapCommand(
-          `.send mail ${character!.name} "Regalo Pendiente" "El jugador ${donorName} quiere regalarte ${item.name || 'un servicio'}. Revisa tu panel web en shadowazeroth.com/dashboard para aceptar o rechazar."`
+          `.send mail ${character!.name} "Regalo Pendiente" "El jugador ${donorName} quiere regalarte ${itemNameSafe}. Revisa tu panel web en shadowazeroth.com/dashboard para aceptar o rechazar."`
         );
       } catch {
         console.error('Failed to send in-game notification (non-critical)');
@@ -600,126 +607,91 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'No se pudieron descontar los puntos' }, { status: 400 });
     }
 
+    // DELIVERY START
     if (character) {
-      // 1. SOAP Items (Standard or Bundle)
+      const donorName = isGift ? await getDonorUsername(connection, userId) : null;
+      console.log(`🎁 [SHOP] Preparando envío para ${character.name}, Donante: ${donorName || 'N/A'}`);
+
+      const mailSubject = isGift ? '¡Has recibido un regalo!' : 'Compra en Tienda';
+      const mailBody = isGift 
+          ? `¡Hola ${character.name}!\n\nHas recibido un regalo de parte de ${donorName}.\nObjeto: ${item.name}\n\n¡Gracias por jugar en TrinityCore!`
+          : `¡Hola ${character.name}!\n\nGracias por tu compra de ${item.name}. Aquí tienes tu objeto.\n\nDisfrútalo.`;
+
+      // 1. Deliver Items (Single or Bundle)
+      let itemsToDeliver: { entry: number; count: number }[] = [];
+
       if (item.service_type === 'bundle' && item.service_data) {
         try {
           const bundleItems = JSON.parse(item.service_data);
           if (Array.isArray(bundleItems)) {
-            for (const b of bundleItems) {
-              await sendSoapItem({
-                characterName: character.name,
-                itemEntry: Number(b.id || b.item_id),
-                itemCount: Number(b.count || 1),
-              });
-            }
+            itemsToDeliver = bundleItems.map(b => ({ entry: Number(b.id || b.item_id), count: Number(b.count || 1) }));
           }
-        } catch (e) { console.error('Error parsing bundle data:', e); }
-      } else if (item.soap_item_entry && (!item.service_type || item.service_type === 'none')) {
-        await sendSoapItem({
-          characterName: character.name,
-          itemEntry: Number(item.soap_item_entry),
-          itemCount: Number(item.soap_item_count || 1),
+        } catch {}
+      } else if (item.soap_item_entry) {
+        itemsToDeliver.push({ entry: Number(item.soap_item_entry), count: Number(item.soap_item_count || 1) });
+      }
+
+      if (itemsToDeliver.length > 0) {
+        await sendItemsViaMail({
+          receiverGuid: character.guid,
+          subject: mailSubject,
+          body: mailBody,
+          items: itemsToDeliver
         });
       }
 
-      // 2. Database Services
+      // 2. Deliver Services
       if (item.service_type && item.service_type !== 'none' && item.service_type !== 'bundle') {
         switch (item.service_type) {
-          case 'name_change':
-            await pool.query('UPDATE characters SET at_login = at_login | 1 WHERE guid = ?', [character.guid]);
-            break;
-          case 'race_change':
-            await pool.query('UPDATE characters SET at_login = at_login | 128 WHERE guid = ?', [character.guid]);
-            break;
-          case 'faction_change':
-            await pool.query('UPDATE characters SET at_login = at_login | 64 WHERE guid = ?', [character.guid]);
-            break;
-
-          case 'level_boost':
-            await deliverLevelBoost(character, item.service_data || null);
-            break;
-
-          case 'experience': {
-            const xpAmount = Number(item.service_data) || 100000;
-            await executeSoapCommand(`.modify xp ${character.name} ${xpAmount}`);
-            break;
-          }
-
-          case 'gold_pack': {
-            const goldAmount = Number(item.service_data) || 1000;
-            const copperAmount = goldAmount * 10000;
-            await executeSoapCommand(`.send money ${character.name} "Agradecimiento" "gracias por tu apoyo esto ayuda al servidor" ${copperAmount}`);
-            break;
-          }
-
-          case 'profession':
-            await deliverProfession(character, Number(item.item_id), item.service_data || null);
-            break;
-
-          case 'character_transfer': {
-            const targetAccountId = Number(body?.targetAccountId);
-            if (targetAccountId > 0) {
-              await pool.query('UPDATE characters SET account = ? WHERE guid = ?', [targetAccountId, character.guid]);
-            }
-            break;
-          }
+          case 'name_change': await pool.query('UPDATE characters SET at_login = at_login | 1 WHERE guid = ?', [character.guid]); break;
+          case 'race_change': await pool.query('UPDATE characters SET at_login = at_login | 128 WHERE guid = ?', [character.guid]); break;
+          case 'faction_change': await pool.query('UPDATE characters SET at_login = at_login | 64 WHERE guid = ?', [character.guid]); break;
+          case 'level_boost': await deliverLevelBoost(character, item.service_data || null); break;
+          case 'experience': await executeSoapCommand(`.modify xp ${character.name} ${Number(item.service_data) || 100000}`); break;
+          case 'gold_pack': await sendItemsViaMail({ receiverGuid: character.guid, subject: mailSubject, body: mailBody, items: [], gold: Number(item.service_data) || 1000 }); break;
+          case 'profession': await deliverProfession(character, Number(item.item_id), item.service_data || null); break;
         }
       }
     }
 
-    await connection.query(
-      `INSERT INTO shop_purchases
-       (account_id, item_id, item_name, currency, price, character_guid, character_name, is_gift)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        userId,
-        itemId,
-        String(item.name || ''),
-        currency,
-        price,
-        character ? character.guid : null,
-        character ? character.name : '',
-        isGift ? 1 : 0,
-      ]
-    );
+    await connection.query(`INSERT INTO shop_purchases (account_id, item_id, item_name, currency, price, character_guid, character_name, is_gift) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, 
+      [userId, itemId, item.name || '', currency, price, character?.guid || null, character?.name || '', isGift ? 1 : 0]);
 
     await connection.commit();
+    return NextResponse.json({ success: true, message: isGift ? 'Regalo enviado con éxito' : 'Compra realizada con éxito' });
 
-    return NextResponse.json(
-      {
-        success: true,
-        message: isGift ? 'Regalo enviado con exito' : 'Compra realizada con exito',
-        purchase: {
-          userId,
-          itemId,
-          characterGuid,
-          currency,
-          price,
-          soapDelivered: Boolean(character && item.soap_item_entry),
-        },
-      },
-      { status: 200 }
-    );
   } catch (error: any) {
+    // Solo intentar rollback si la transacción se inició realmente
     if (connection) {
-      await connection.rollback();
+      try {
+        await connection.query('ROLLBACK');
+      } catch (rbError) {
+        console.error('Rollback error (safe to ignore if no transaction):', rbError);
+      }
     }
 
-    console.error('Shop purchase error:', error);
+    console.error('❌ Error crítico en la compra:', {
+      message: error.message,
+      stack: error.stack,
+      userId,
+      itemId,
+      currency,
+      isGift
+    });
+
     return NextResponse.json(
       {
-        error: 'Error en el servidor',
+        error: 'Error interno en el servidor',
         details: error.message,
-        code: error.code,
-        soapCommand: error.soapCommand,
-        soapResponse: error.soapResponse,
-        httpStatus: error.httpStatus,
+        code: error.code || 'INTERNAL_ERROR',
+        hint: 'Verifica que el personaje esté desconectado si es un servicio de login.'
       },
       { status: 500 }
     );
   } finally {
-    connection?.release();
+    if (connection) {
+      connection.release();
+    }
   }
 }
 

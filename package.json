@@ -12,6 +12,7 @@
     "@strapi/sdk-js": "^1.0.0",
     "@stripe/stripe-js": "^8.11.0",
     "@types/crypto-js": "^4.2.2",
+    "@types/ssh2": "^1.15.5",
     "autoprefixer": "^10.4.27",
     "crypto-js": "^4.2.0",
     "dotenv": "^17.3.1",
@@ -23,6 +24,8 @@
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "resend": "^6.9.3",
+    "simple-parallax-js": "^6.3.3",
+    "ssh2": "^1.17.0",
     "strapi-sdk-js": "^3.0.0",
     "stripe": "^20.4.1"
   },

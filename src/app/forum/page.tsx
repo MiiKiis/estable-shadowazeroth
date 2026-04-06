@@ -13,8 +13,10 @@ const STATUS_FILTERS = [
 import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { MessageSquare, Pin, Lock, PlusCircle, ChevronRight, Users, Clock, Globe, Wrench, BookOpen, Shield, AlertTriangle, Edit2, Trash2, CornerUpLeft, AlertOctagon, Megaphone, Lightbulb, LifeBuoy, Sparkles, Search, SlidersHorizontal } from 'lucide-react';
+import { MessageSquare, Pin, Lock, Unlock, PlusCircle, ChevronRight, Users, Clock, Globe, Wrench, BookOpen, Shield, AlertTriangle, Edit2, Trash2, CornerUpLeft, AlertOctagon, Megaphone, Lightbulb, LifeBuoy, Sparkles, Search, SlidersHorizontal, Bold, Italic, Underline, AlignCenter, Image as ImageIcon, Type, Palette, ArrowRight, Settings, Plus, FolderPlus } from 'lucide-react';
+import * as LucideIcons from 'lucide-react';
 import Image from 'next/image';
+import { motion, AnimatePresence } from 'framer-motion';
 
 type Topic = {
   id: number;
@@ -39,30 +41,29 @@ type Topic = {
 
 export default function ForumPage() {
     const router = useRouter();
-  // --- MISSING STATE AND CONSTANTS ---
-  // Category and UI state
+  // Hierarchical Sections State
+  const [sections, setSections] = useState<any[]>([]);
   const [activeCategory, setActiveCategory] = useState('announcements');
   const [showNewTopic, setShowNewTopic] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [topics, setTopics] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [isStaffGM, setIsStaffGM] = useState(false);
+  const [showAddSection, setShowAddSection] = useState(false);
 
-  // Category definitions (example, adjust as needed)
-  const CATEGORIES = [
-    { id: 'announcements', label: 'Anuncios', desc: 'Novedades oficiales', color: 'from-fuchsia-700 to-fuchsia-900', border: 'border-fuchsia-700', text: 'text-fuchsia-300' },
-    { id: 'support', label: 'Soporte', desc: 'Ayuda y soporte', color: 'from-rose-700 to-rose-900', border: 'border-rose-700', text: 'text-rose-300' },
-    { id: 'guides', label: 'Guías', desc: 'Guías y tutoriales', color: 'from-cyan-700 to-cyan-900', border: 'border-cyan-700', text: 'text-cyan-300' },
-    { id: 'reports', label: 'Denuncias', desc: 'Reporta bugs', color: 'from-red-700 to-red-900', border: 'border-red-700', text: 'text-red-300' },
-    { id: 'suggestions', label: 'Sugerencias', desc: 'Ideas y sugerencias', color: 'from-emerald-700 to-emerald-900', border: 'border-emerald-700', text: 'text-emerald-300' },
-  ];
-  // Category icons (example, adjust as needed)
-  const CATEGORY_ICONS: Record<string, React.ReactNode> = {
-    announcements: <Megaphone className="w-5 h-5" />,
-    support: <LifeBuoy className="w-5 h-5" />,
-    guides: <Lightbulb className="w-5 h-5" />,
-    reports: <AlertOctagon className="w-5 h-5" />,
-    suggestions: <Sparkles className="w-5 h-5" />
-  };
+  // Form for new section
+  const [sectionForm, setSectionForm] = useState({
+    id: '', label: '', desc: '', icon: 'MessageSquare', parent_id: null as string | null
+  });
+
+  // Derived sections
+  const activeSectionObj = sections.find(s => s.id === activeCategory);
+  const activeMainCategoryId = activeSectionObj?.parent_id ? activeSectionObj.parent_id : activeCategory;
+
+  const mainSections = sections.filter(s => !s.parent_id);
+  const subSections = sections.filter(s => s.parent_id === activeMainCategoryId);
+
+  const CATEGORIES = mainSections; // For compatibility
 
   // Templates
   const SUPPORT_TEMPLATE = 'Describe tu problema, pasos para reproducirlo, y adjunta evidencia.';
@@ -111,12 +112,53 @@ export default function ForumPage() {
   const [onlyPinned, setOnlyPinned] = useState(false);
   const [onlyLocked, setOnlyLocked] = useState(false);
 
-  useEffect(() => {
-    const raw = localStorage.getItem('user');
-    if (raw) { try { setUser(JSON.parse(raw)); } catch {} }
-  }, []);
+  const textareaRef = React.useRef<HTMLTextAreaElement>(null);
+
+  const insertBBCode = (openTag: string, closeTag: string) => {
+    if (!textareaRef.current) return;
+    const el = textareaRef.current;
+    const start = el.selectionStart;
+    const end = el.selectionEnd;
+    const text = el.value;
+    
+    const before = text.substring(0, start);
+    const selected = text.substring(start, end);
+    const after = text.substring(end, text.length);
+
+    const newText = before + openTag + selected + closeTag + after;
+    setNewBody(newText);
+    
+    // Reposition cursor
+    setTimeout(() => {
+      el.focus();
+      el.setSelectionRange(start + openTag.length + selected.length, start + openTag.length + selected.length);
+    }, 0);
+  };
+
+  const insertPromptTag = (tag: string, promptText: string) => {
+    const val = window.prompt(promptText);
+    if (!val) return;
+    if (tag === 'img') insertBBCode(`[img]${val}[/img]`, '');
+    if (tag === 'color') insertBBCode(`[color=${val}]`, '[/color]');
+    if (tag === 'size') insertBBCode(`[size=${val}px]`, '[/size]');
+    if (tag === 'font') insertBBCode(`[font=${val}]`, '[/font]');
+  };
 
   useEffect(() => {
+    const raw = localStorage.getItem('user');
+    const u = raw ? JSON.parse(raw) : null;
+    if (u) setUser(u);
+
+    // Fetch dynamic sections
+    const userIdQuery = u?.id ? `?userId=${u.id}` : '';
+    fetch(`/api/forum/sections${userIdQuery}`)
+      .then(r => r.json())
+      .then(d => {
+        setSections(Array.isArray(d.sections) ? d.sections : []);
+        setIsStaffGM(!!d.isGM);
+      })
+      .catch(() => {});
+
     fetch('/api/stats/global')
       .then(r => r.json())
       .then(d => setRealmStats(d?.stats || null))
@@ -167,8 +209,10 @@ export default function ForumPage() {
   const filtered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
 
-    const items = topics
-      .filter((topic) => topic.category === activeCategory)
+    const hasSubsections = sections.some(s => s.parent_id === activeCategory);
+    const items = (hasSubsections) 
+      ? [] 
+      : topics.filter((topic) => topic.category === activeCategory)
       .filter((topic) => {
         if (!q) return true;
         return (
@@ -205,7 +249,41 @@ export default function ForumPage() {
     return sorted;
   }, [topics, activeCategory, searchQuery, statusFilter, sortBy, onlyPinned, onlyLocked]);
   const latestTopics = topics.slice(0, 5);
-  const categoryMeta = CATEGORIES.find(c => c.id === activeCategory);
+  const handleAddSection = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || !isStaffGM) return;
+    try {
+      const res = await fetch('/api/forum/sections', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...sectionForm, description: sectionForm.desc, userId: user.id }),
+      });
+      if (res.ok) {
+        setShowAddSection(false);
+        setSectionForm({ id: '', label: '', desc: '', icon: 'MessageSquare', parent_id: null });
+        // Reload sections
+        const r = await fetch(`/api/forum/sections?userId=${user.id}`);
+        const d = await r.json();
+        setSections(d.sections);
+      }
+    } catch (err) {}
+  };
+
+  const handleToggleLock = async (id: string, currentStatus: number) => {
+    if (!user || !isStaffGM) return;
+    try {
+      const res = await fetch('/api/forum/sections', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id, id, is_locked: !currentStatus }),
+      });
+      if (res.ok) {
+        const r = await fetch(`/api/forum/sections?userId=${user.id}`);
+        const d = await r.json();
+        setSections(Array.isArray(d.sections) ? d.sections : []);
+      }
+    } catch (err) {}
+  };
 
   return (
     <main
@@ -232,10 +310,24 @@ export default function ForumPage() {
           {user && (
             <button
               onClick={openNewTopic}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-600 hover:to-indigo-600 font-black text-sm uppercase tracking-wider shadow-[0_0_20px_rgba(168,85,247,0.3)] transition-all"
+              disabled={activeSectionObj?.is_locked && !isStaffGM}
+              className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-black text-sm uppercase tracking-wider transition-all ${
+                activeSectionObj?.is_locked && !isStaffGM
+                ? 'bg-gray-800 text-gray-500 cursor-not-allowed opacity-50 border border-gray-700/30'
+                : 'bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-600 hover:to-indigo-600 shadow-[0_0_20px_rgba(168,85,247,0.3)] text-white'
+              }`}
             >
-              <PlusCircle className="w-4 h-4" />
-              Nuevo Tema
+              {activeSectionObj?.is_locked && !isStaffGM ? (
+                <>
+                  <Lock className="w-4 h-4" />
+                  Sección Cerrada
+                </>
+              ) : (
+                <>
+                  <PlusCircle className="w-4 h-4" />
+                  Nuevo Tema
+                </>
+              )}
             </button>
           )}
         </div>
@@ -258,35 +350,50 @@ export default function ForumPage() {
               {/* Visual category picker */}
               <div>
                 <p className="text-xs font-black uppercase tracking-widest text-gray-400 mb-2">¿Dónde va este tema?</p>
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
-                  {CATEGORIES.map(cat => (
-                    <button
-                      key={cat.id}
-                      type="button"
-                      onClick={() => setNewCategory(cat.id)}
-                      className={`flex flex-col items-center gap-1.5 px-3 py-3 rounded-2xl border transition-all text-center ${
-                        newCategory === cat.id
-                          ? `bg-gradient-to-br ${cat.color} ${cat.border} ${cat.text} shadow-[0_0_14px_rgba(0,0,0,0.5)]`
-                          : 'bg-black/30 border-purple-900/30 text-gray-500 hover:text-gray-300 hover:border-purple-800/50'
-                      }`}
-                    >
-                      <span className={newCategory === cat.id ? cat.text : 'text-gray-600'}>
-                        {CATEGORY_ICONS[cat.id]}
-                      </span>
-                      <span className="text-[11px] font-black uppercase tracking-wide leading-tight">{cat.label}</span>
-                      <span className="text-[9px] leading-tight opacity-70 hidden sm:block">{cat.desc}</span>
-                    </button>
-                  ))}
-                </div>
+                <select
+                  value={newCategory}
+                  onChange={e => setNewCategory(e.target.value)}
+                  className="w-full h-12 px-4 rounded-xl bg-black/60 border border-purple-900/50 text-sm text-white focus:outline-none focus:ring-2 focus:ring-purple-500/60 transition-all font-semibold"
+                >
+                  {mainSections.map(parent => {
+                    const subs = sections.filter(s => s.parent_id === parent.id);
+                    return (
+                      <optgroup key={parent.id} label={parent.label.toUpperCase()} className="bg-gray-900 text-purple-300 font-black">
+                        {(!parent.is_locked || isStaffGM) && <option value={parent.id} className="text-white font-medium">✨ {parent.label} (Categoría General)</option>}
+                        {subs.map(sub => (
+                          (!sub.is_locked || isStaffGM) && (
+                            <option key={sub.id} value={sub.id} className="text-gray-300 pl-4 font-normal">
+                              ↳ {sub.label}
+                            </option>
+                          )
+                        ))}
+                      </optgroup>
+                    );
+                  })}
+                </select>
               </div>
-              <textarea
-                placeholder="Escribe tu mensaje aquí..."
-                rows={5}
-                className="w-full bg-black/60 border border-purple-900/50 rounded-2xl px-4 py-3 text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500/60 resize-none"
-                value={newBody}
-                onChange={e => setNewBody(e.target.value)}
-                required
-              />
+              <div className="bg-[#03060d]/60 border border-purple-500/20 rounded-2xl overflow-hidden flex flex-col">
+                <div className="border-b border-purple-500/20 bg-purple-900/10 p-2 flex flex-wrap gap-1">
+                  <button type="button" onClick={() => insertBBCode('[b]', '[/b]')} className="p-2 hover:bg-purple-900/40 rounded-lg text-gray-300 hover:text-white transition-colors" title="Negrita"><Bold className="w-4 h-4" /></button>
+                  <button type="button" onClick={() => insertBBCode('[i]', '[/i]')} className="p-2 hover:bg-purple-900/40 rounded-lg text-gray-300 hover:text-white transition-colors" title="Cursiva"><Italic className="w-4 h-4" /></button>
+                  <button type="button" onClick={() => insertBBCode('[u]', '[/u]')} className="p-2 hover:bg-purple-900/40 rounded-lg text-gray-300 hover:text-white transition-colors" title="Subrayado"><Underline className="w-4 h-4" /></button>
+                  <div className="w-px h-6 bg-purple-500/20 mx-1 self-center" />
+                  <button type="button" onClick={() => insertBBCode('[center]', '[/center]')} className="p-2 hover:bg-purple-900/40 rounded-lg text-gray-300 hover:text-white transition-colors" title="Centrar"><AlignCenter className="w-4 h-4" /></button>
+                  <div className="w-px h-6 bg-purple-500/20 mx-1 self-center" />
+                  <button type="button" onClick={() => insertPromptTag('color', 'Introduce color hex (ej: #ff0000 o red):')} className="p-2 hover:bg-purple-900/40 rounded-lg text-cyan-300 hover:text-cyan-200 transition-colors" title="Color de Texto"><Palette className="w-4 h-4" /></button>
+                  <button type="button" onClick={() => insertPromptTag('size', 'Introduce tamaño numérico en px (ej: 24):')} className="p-2 hover:bg-purple-900/40 rounded-lg text-cyan-300 hover:text-cyan-200 transition-colors" title="Tamaño de Fuente"><Type className="w-4 h-4" /></button>
+                  <button type="button" onClick={() => insertPromptTag('img', 'Introduce URL de la imagen:')} className="p-2 hover:bg-purple-900/40 rounded-lg text-fuchsia-400 hover:text-fuchsia-300 transition-colors" title="Insertar Imagen"><ImageIcon className="w-4 h-4" /></button>
+                </div>
+                <textarea
+                  ref={textareaRef}
+                  placeholder="Escribe tu mensaje aquí..."
+                  rows={6}
+                  className="w-full bg-transparent px-5 py-4 text-white placeholder:text-gray-500 focus:outline-none resize-y text-[15px] leading-relaxed block"
+                  value={newBody}
+                  onChange={e => setNewBody(e.target.value)}
+                  required
+                />
+              </div>
               {postError && <p className="text-rose-400 text-sm">{postError}</p>}
               <div className="rounded-2xl border border-purple-500/35 bg-gradient-to-r from-purple-950/40 to-indigo-950/30 p-2.5">
                 <button
@@ -314,7 +421,7 @@ export default function ForumPage() {
               <p className="text-[10px] uppercase tracking-[0.2em] font-black text-purple-300 mb-2 flex items-center gap-2">
                 <SlidersHorizontal className="w-3.5 h-3.5" /> Filtros
               </p>
-              <div className="relative">
+              <div className="relative mb-3">
                 <Search className="w-4 h-4 text-gray-500 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
                   value={searchQuery}
@@ -322,6 +429,8 @@ export default function ForumPage() {
                   placeholder="Buscar tema o autor"
                   className="w-full h-10 pl-9 pr-3 rounded-xl bg-black/50 border border-purple-900/40 text-sm text-white placeholder:text-gray-500 focus:outline-none focus:border-purple-500/60"
                 />
+              </div>
+              <div className="flex flex-wrap gap-2">
                 {STATUS_FILTERS.map((item) => (
                   <button
                     key={item.id}
@@ -343,24 +452,177 @@ export default function ForumPage() {
           </aside>
 
           <section>
-            {/* Category Tabs */}
-            <div className="flex flex-wrap gap-2 mb-3">
-              {CATEGORIES.map(cat => (
-                <button
-                  key={cat.id}
-                  onClick={() => setActiveCategory(cat.id)}
-                  className={`px-4 py-2 rounded-xl font-black text-xs uppercase tracking-widest transition-all border ${
-                    activeCategory === cat.id
-                      ? 'bg-gradient-to-r ' + cat.color + ' border-purple-400 text-white shadow-[0_0_20px_rgba(168,85,247,0.8)] scale-105 transform z-10 ring-2 ring-purple-500/60'
-                      : 'bg-black/30 border-purple-900/40 text-gray-400 hover:text-white hover:border-purple-600/60'
-                  }`}
-                >
-                  {cat.label}
-                </button>
-              ))}
+            {/* Main Category Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
+              {mainSections.map(cat => {
+                const DynamicIcon = (LucideIcons as any)[cat.icon] || LucideIcons.MessageSquare;
+                const isActive = activeMainCategoryId === cat.id;
+                return (
+                  <motion.div
+                    key={cat.id}
+                    role="button"
+                    tabIndex={0}
+                    whileHover={{ scale: 1.05, y: -5 }}
+                    whileTap={{ scale: 0.95 }}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setActiveCategory(cat.id); }}
+                    onClick={() => {
+                      setActiveCategory(cat.id);
+                    }}
+                    className={`relative group overflow-hidden rounded-2xl border-2 transition-all p-4 flex flex-col items-center text-center gap-2 cursor-pointer ${
+                      isActive 
+                        ? `bg-gradient-to-br ${cat.color} border-white shadow-[0_0_25px_rgba(168,85,247,0.4)] ring-2 ring-purple-500/50` 
+                        : 'bg-[#0d131b]/60 border-purple-900/20 hover:border-purple-600/50'
+                    }`}
+                  >
+                    <div className={`p-3 rounded-2xl ${isActive ? 'bg-white/10' : 'bg-purple-900/10 group-hover:bg-purple-900/20'} transition-colors`}>
+                      <DynamicIcon className={`w-6 h-6 ${isActive ? 'text-white' : cat.text_color}`} />
+                    </div>
+                    <div>
+                      <h3 className={`text-[11px] font-black uppercase tracking-widest ${isActive ? 'text-white' : 'text-gray-200'}`}>
+                        {cat.label}
+                      </h3>
+                      <p className={`text-[9px] font-bold opacity-60 uppercase tracking-tighter hidden sm:block ${isActive ? 'text-white' : 'text-gray-400'}`}>
+                        {cat.description}
+                      </p>
+                    </div>
+                    {isActive && (
+                      <motion.div 
+                        layoutId="active-indicator"
+                        className="absolute bottom-0 left-0 right-0 h-1 bg-white"
+                      />
+                    )}
+                  </motion.div>
+                );
+              })}
             </div>
 
-            {categoryMeta && <p className="text-xs text-gray-400 mb-5">{categoryMeta.desc}</p>}
+            {/* Sub-sections Grid (Sub-Tree) */}
+            {subSections.length > 0 && (
+              <div className="mb-10 animate-in fade-in slide-in-from-top-2 duration-500">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="h-px flex-1 bg-gradient-to-r from-transparent via-purple-500/20 to-transparent" />
+                  <span className="text-[10px] uppercase font-black tracking-[0.4em] text-purple-400 flex items-center gap-2 px-5 py-2 bg-purple-900/10 rounded-full border border-purple-500/10 backdrop-blur-md">
+                    <ChevronRight className="w-3.5 h-3.5" /> Sub-Categorías Disponibles
+                  </span>
+                  <div className="h-px flex-1 bg-gradient-to-r from-transparent via-purple-500/20 to-transparent" />
+                </div>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                  {subSections.map(sub => {
+                    const SubIcon = (LucideIcons as any)[sub.icon] || LucideIcons.MessageSquare;
+                    const isSubActive = activeCategory === sub.id;
+                    return (
+                      <motion.div
+                        key={sub.id}
+                        role="button"
+                        tabIndex={0}
+                        whileHover={{ scale: 1.02, y: -2 }}
+                        whileTap={{ scale: 0.98 }}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setActiveCategory(sub.id); }}
+                        onClick={() => setActiveCategory(sub.id)}
+                        className={`relative group overflow-hidden rounded-2xl border-2 transition-all p-5 flex items-center gap-4 text-left cursor-pointer ${
+                          isSubActive 
+                            ? `bg-gradient-to-br ${sub.color || 'from-purple-600 to-indigo-600'} border-white shadow-[0_0_30px_rgba(168,85,247,0.2)]` 
+                            : 'bg-black/40 border-purple-900/20 hover:border-purple-600/40 hover:bg-black/60 shadow-lg'
+                        }`}
+                      >
+                         <div className={`shrink-0 p-3.5 rounded-xl ${isSubActive ? 'bg-white/20' : 'bg-purple-900/20 group-hover:bg-purple-900/30'} transition-all`}>
+                            <SubIcon className={`w-5 h-5 ${isSubActive ? 'text-white' : (sub.text_color || 'text-purple-400')}`} />
+                         </div>
+                         <div className="min-w-0 flex-1">
+                            <h4 className={`text-[12px] font-black uppercase tracking-widest leading-none ${isSubActive ? 'text-white' : 'text-gray-100 group-hover:text-white'}`}>
+                              {sub.label}
+                            </h4>
+                            <p className={`text-[10px] font-medium mt-1.5 line-clamp-1 opacity-60 ${isSubActive ? 'text-white' : 'text-gray-400'}`}>
+                              {sub.description || 'Hilos y discusiones'}
+                            </p>
+                         </div>
+                         {isSubActive && (
+                            <div className="absolute top-3 right-3 flex items-center gap-2">
+                               {sub.is_locked ? <Lock className="w-2.5 h-2.5 text-rose-500" /> : null}
+                               <div className="w-1.5 h-1.5 rounded-full bg-white animate-pulse shadow-[0_0_8px_white]" />
+                            </div>
+                         )}
+                         {isStaffGM && (
+                           <button
+                             onClick={(e) => { e.stopPropagation(); handleToggleLock(sub.id, sub.is_locked || 0); }}
+                             className={`absolute bottom-3 right-3 p-2 rounded-lg transition-all z-30 ${
+                               sub.is_locked ? 'bg-rose-500/20 text-rose-500 border border-rose-500/40 hover:bg-rose-500/30' : 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 hover:bg-emerald-500/20'
+                             }`}
+                             title={sub.is_locked ? 'Habilitar creación de temas' : 'Bloquear creación de temas'}
+                           >
+                             {sub.is_locked ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
+                           </button>
+                         )}
+                         <div className={`absolute -right-4 -bottom-4 opacity-[0.03] group-hover:opacity-[0.07] transition-opacity ${isSubActive ? 'hidden' : 'block'}`}>
+                            <SubIcon size={80} />
+                         </div>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* GM Tools for Sections */}
+            {isStaffGM && (
+              <div className="mb-6">
+                {!showAddSection ? (
+                  <button 
+                    onClick={() => {
+                      setShowAddSection(true);
+                      setSectionForm({...sectionForm, parent_id: (activeSectionObj && !activeSectionObj.parent_id) ? activeSectionObj.id : null});
+                    }}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-black/40 border border-amber-600/30 text-amber-300 hover:bg-amber-600/10 text-[10px] font-black uppercase tracking-[0.1em] transition-all"
+                  >
+                    <FolderPlus className="w-3.5 h-3.5" /> Crear nueva subsección en {activeSectionObj?.label || 'General'}
+                  </button>
+                ) : (
+                  <motion.div 
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="p-5 rounded-2xl border border-amber-600/40 bg-black/60 backdrop-blur-md"
+                  >
+                    <div className="flex items-center justify-between mb-4">
+                      <h4 className="text-xs font-black uppercase text-amber-400">Panel de Gestión de Secciones</h4>
+                      <button onClick={() => setShowAddSection(false)} className="text-gray-500 hover:text-white"><Plus className="w-4 h-4 rotate-45" /></button>
+                    </div>
+                    <form onSubmit={handleAddSection} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-gray-500 uppercase">ID Único (URL)</label>
+                        <input className="w-full h-10 px-4 rounded-xl bg-black/60 border border-purple-900/40 text-xs text-white" 
+                               placeholder="ej: pj-eliminados" value={sectionForm.id} onChange={e => setSectionForm({...sectionForm, id: e.target.value})} required />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-gray-500 uppercase">Nombre Visible</label>
+                        <input className="w-full h-10 px-4 rounded-xl bg-black/60 border border-purple-900/40 text-xs text-white" 
+                               placeholder="ej: PJ Eliminados" value={sectionForm.label} onChange={e => setSectionForm({...sectionForm, label: e.target.value})} required />
+                      </div>
+                      <div className="space-y-2 col-span-full">
+                        <label className="text-[10px] font-black text-gray-500 uppercase">Descripción</label>
+                        <input className="w-full h-10 px-4 rounded-xl bg-black/60 border border-purple-900/40 text-xs text-white" 
+                               placeholder="Detalles sobre esta sección" value={sectionForm.desc} onChange={e => setSectionForm({...sectionForm, desc: e.target.value})} />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-gray-500 uppercase">Padre (Sub-sección de...)</label>
+                        <select className="w-full h-10 px-4 rounded-xl bg-black/60 border border-purple-900/40 text-xs text-white"
+                                value={sectionForm.parent_id || ''} onChange={e => setSectionForm({...sectionForm, parent_id: e.target.value || null})}>
+                          <option value="">(Raíz / Categoría Principal)</option>
+                          {mainSections.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+                        </select>
+                      </div>
+                      <div className="flex items-end">
+                        <button type="submit" className="w-full h-10 rounded-xl bg-amber-600 hover:bg-amber-500 text-black font-black text-[10px] uppercase tracking-wider transition-all shadow-[0_4px_20px_rgba(217,119,6,0.2)]">
+                          GUARDAR SECCIÓN
+                        </button>
+                      </div>
+                    </form>
+                  </motion.div>
+                )}
+              </div>
+            )}
+
+            {activeSectionObj && <p className="text-xs text-gray-400 mb-5">{activeSectionObj.description}</p>}
 
             <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-purple-900/30 bg-black/25 px-3 py-2">
               <p className="text-xs text-gray-400">
@@ -388,10 +650,24 @@ export default function ForumPage() {
                   <div key={i} className="h-20 rounded-2xl border border-purple-900/20 bg-black/40 animate-pulse" />
                 ))
               ) : filtered.length === 0 ? (
-                <div className="text-center py-20 text-gray-500">
-                  <MessageSquare className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                  <p className="font-semibold">No hay temas en esta categoría todavía.</p>
-                  {user && <p className="text-sm mt-1">¡Sé el primero en crear uno!</p>}
+                <div className="text-center py-24 bg-[#0d131b]/30 rounded-3xl border border-dashed border-purple-900/20 backdrop-blur-sm">
+                   {subSections.length > 0 && activeCategory === activeMainCategoryId ? (
+                      <>
+                        <div className="w-20 h-20 bg-purple-900/10 rounded-full flex items-center justify-center mx-auto mb-6 border border-purple-500/20">
+                           <Sparkles className="w-10 h-10 text-purple-400/50" />
+                        </div>
+                        <h3 className="text-xl font-black text-white italic uppercase tracking-tighter mb-2">Selecciona una Sub-Categoría</h3>
+                        <p className="max-w-xs mx-auto text-gray-500 text-[11px] font-bold uppercase tracking-widest leading-relaxed">
+                          Para ver los temas y discusiones disponibles, elige una de las tarjetas de arriba.
+                        </p>
+                      </>
+                   ) : (
+                      <>
+                        <MessageSquare className="w-16 h-16 mx-auto mb-4 text-purple-600/20" />
+                        <h3 className="text-xl font-black text-white italic uppercase tracking-tighter mb-1 select-none">No hay temas aquí todavía.</h3>
+                        {user && <p className="text-gray-500 text-xs font-bold uppercase tracking-widest opacity-80">¡Sé el primero en crear uno!</p>}
+                      </>
+                   )}
                 </div>
               ) : (
                 filtered.map(topic => (
@@ -427,9 +703,10 @@ export default function ForumPage() {
                           topic.category === 'guides'  ? 'border-cyan-700/40 text-cyan-400' :
                           topic.category === 'reports' ? 'border-red-700/50 text-red-400' :
                           topic.category === 'suggestions' ? 'border-emerald-700/50 text-emerald-400' :
+                          topic.category === 'migrations' ? 'border-blue-700/50 text-blue-400' :
                           'border-amber-700/40 text-amber-400'
                         }`}>
-                          {CATEGORIES.find(c => c.id === topic.category)?.label ?? topic.category}
+                          {sections.find(c => c.id === topic.category)?.label ?? topic.category}
                         </span>
                       </div>
                       <p className="text-xs text-gray-500 mt-0.5">

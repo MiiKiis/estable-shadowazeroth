@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { authPool } from '@/lib/db';
 import { calculateVerifier, calculateVerifierLegacy } from '@/lib/srp6';
+import { RowDataPacket } from 'mysql2';
 
 function toBinaryBuffer(value: unknown): Buffer {
   if (!value) return Buffer.alloc(32);
@@ -32,7 +33,18 @@ export async function POST(request: Request) {
     }
 
     // 1. Get account from acore_auth
-    const [rows]: any = await authPool.query(
+    if (!authPool) {
+      return NextResponse.json({ error: 'Base de datos de autenticación no disponible' }, { status: 500 });
+    }
+
+    interface AccountRow extends RowDataPacket {
+      id: number;
+      username: string;
+      salt: string | Buffer;
+      verifier: string | Buffer;
+    }
+
+    const [rows] = await authPool.query<AccountRow[]>(
       'SELECT id, username, salt, verifier FROM account WHERE UPPER(username) = UPPER(?)',
       [normalizedUsername]
     );
@@ -65,23 +77,23 @@ export async function POST(request: Request) {
           }
         }, { status: 200 });
       } else {
-        // FAILED
         return NextResponse.json({ error: 'Código de acceso incorrecto' }, { status: 401 });
       }
-    } catch (cryptoError: any) {
+    } catch (cryptoError: unknown) {
+      const errorMsg = cryptoError instanceof Error ? cryptoError.message : 'Error desconocido';
       console.error('Crypto Error during login:', cryptoError);
       return NextResponse.json({ 
         error: 'Error al verificar credenciales',
-        details: cryptoError.message 
+        details: errorMsg 
       }, { status: 500 });
     }
 
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : 'Error del servidor inesperado';
     console.error('Fatal Login Error:', error);
     return NextResponse.json({ 
       error: 'Error del servidor inesperado',
-      details: error.message,
-      stack: error.stack
+      details: errorMsg
     }, { status: 500 });
   }
 }

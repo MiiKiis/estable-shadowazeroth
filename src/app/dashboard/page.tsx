@@ -72,6 +72,7 @@ type PurchaseHistoryRow = {
   character_name: string;
   is_gift: number;
   created_at: string;
+  service_type?: string | null;
 };
 
 // Precio para desbloquear cambio libre de avatar
@@ -585,28 +586,44 @@ export default function Dashboard() {
         <div className={`flex flex-col md:flex-row md:items-end justify-between gap-6 border-b pb-10 transition-colors duration-700 ${
           faction === 'horde' ? 'border-red-800/40' : 'border-blue-700/40'
         }`}>
-        <div>
-          <span className={`text-[11px] font-black uppercase tracking-[0.5em] mb-3 block transition-colors duration-700 ${
-            faction === 'horde' ? 'text-red-400' : 'text-blue-300'
-          }`}>⚔ Fortaleza de Shadow Azeroth</span>
-          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black italic tracking-tighter text-white uppercase drop-shadow-[0_2px_14px_rgba(0,0,0,0.75)]">
-            Panel del&nbsp;
-            <span className={`transition-colors duration-700 ${
-              faction === 'horde'
-                ? 'text-red-400 drop-shadow-[0_0_18px_rgba(239,68,68,0.7)]'
-                : 'text-blue-300 drop-shadow-[0_0_18px_rgba(96,165,250,0.7)]'
-            }`}>Adalid</span>
-          </h1>
-          {/* Insignia de facción llamativa */}
-          <div className={`mt-4 inline-flex items-center gap-2.5 px-4 py-2 rounded-full text-sm font-black uppercase tracking-widest border-2 shadow-lg transition-all duration-700 ${
-            faction === 'horde'
-              ? 'bg-red-950/80 border-red-500/70 text-red-300 shadow-red-900/50'
-              : 'bg-blue-950/80 border-blue-500/70 text-blue-200 shadow-blue-900/50'
-          }`}>
-            <span className="text-lg">{faction === 'horde' ? '🔴' : '🔵'}</span>
-            <span>{faction === 'horde' ? 'LA HORDA' : 'LA ALIANZA'}</span>
+          <div className="flex flex-col lg:flex-row lg:items-center gap-8 lg:gap-14">
+            <div className="flex items-center gap-8">
+              {/* Massive Faction Seal (Floating Style) */}
+              <div className="relative group flex-shrink-0">
+                <span className={`absolute -top-6 left-0 text-[10px] font-black uppercase tracking-[0.4em] transition-colors duration-700 whitespace-nowrap ${
+                  faction === 'horde' ? 'text-red-500/60' : 'text-blue-400/60'
+                }`}>⚔ Fortaleza de Shadow Azeroth</span>
+                
+                <div className={`absolute inset-0 rounded-full blur-3xl opacity-30 transition-all duration-1000 group-hover:opacity-50 ${faction === 'horde' ? 'bg-red-500' : 'bg-blue-500'}`} />
+                <div className={`relative p-5 rounded-[2.5rem] border-4 shadow-2xl transition-all duration-700 hover:scale-110 active:scale-95 ${
+                  faction === 'horde'
+                    ? 'bg-gradient-to-br from-red-950/80 to-black border-red-500/60 shadow-red-900/40'
+                    : 'bg-gradient-to-br from-blue-950/80 to-black border-blue-500/60 shadow-blue-900/40'
+                }`}>
+                  <Image
+                    src={`/faccion/${faction === 'horde' ? 'horda' : 'alianza'}.png`}
+                    width={90}
+                    height={90}
+                    alt={faction}
+                    className="w-20 h-20 sm:w-24 sm:h-24 object-contain drop-shadow-[0_0_15px_rgba(0,0,0,0.8)]"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <span className={`text-xs font-black uppercase tracking-[0.6em] transition-colors duration-700 ${
+                  faction === 'horde' ? 'text-red-400/80' : 'text-blue-300/80'
+                }`}>POR LA GLORIA DE</span>
+                <h1 className="text-4xl sm:text-6xl font-black italic tracking-tighter text-white uppercase leading-none">
+                  {faction === 'horde' ? 'LA HORDA' : 'LA ALIANZA'}
+                </h1>
+                <div className="flex items-center gap-3 pt-2">
+                  <div className={`h-[2px] w-12 rounded-full ${faction === 'horde' ? 'bg-red-500' : 'bg-blue-500'}`} />
+                  <span className="text-sm font-bold text-gray-400 tracking-widest uppercase">Panel del Adalid</span>
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
           <div className="flex flex-wrap items-center gap-4 mb-2">
             <Link
               href="/donate"

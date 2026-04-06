@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import { 
   Send, Bold, Italic, Underline, AlignCenter, 
   Image as ImageIcon, Type, Palette, MessageSquare, Pin
@@ -11,6 +11,7 @@ export default function AdminForum() {
   const [category, setCategory] = useState('announcements');
   const [comment, setComment] = useState('');
   const [pinned, setPinned] = useState(false);
+  const [sections, setSections] = useState<any[]>([]);
   
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -18,13 +19,20 @@ export default function AdminForum() {
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const CATEGORIES = [
-    { id: 'announcements', label: 'Anuncios'},
-    { id: 'support', label: 'Soporte'},
-    { id: 'guides', label: 'Guías'},
-    { id: 'reports', label: 'Denuncias'},
-    { id: 'suggestions', label: 'Sugerencias'},
-  ];
+  React.useEffect(() => {
+    fetch('/api/forum/sections')
+      .then(res => res.json())
+      .then(data => {
+        if (data.sections) {
+          setSections(data.sections);
+          // Set initial category to the first one available
+          if (data.sections.length > 0 && !data.sections.find((s:any) => s.id === category)) {
+            setCategory(data.sections[0].id);
+          }
+        }
+      })
+      .catch(() => {});
+  }, [category]);
 
   const insertBBCode = (openTag: string, closeTag: string) => {
     if (!textareaRef.current) return;
@@ -146,8 +154,13 @@ export default function AdminForum() {
                 onChange={e => setCategory(e.target.value)}
                 className="w-full bg-black/50 border border-purple-500/30 rounded-xl px-5 py-3.5 text-white focus:outline-none focus:ring-2 focus:ring-purple-400/60 transition-all cursor-pointer font-bold"
               >
-                {CATEGORIES.map(c => (
-                  <option key={c.id} value={c.id}>{c.label}</option>
+                {sections.filter(s => !s.parent_id).map(main => (
+                  <optgroup key={main.id} label={main.label.toUpperCase()} className="bg-gray-900 text-purple-300 font-bold">
+                    <option value={main.id} className="text-white font-medium text-xs">✨ {main.label} (Principal)</option>
+                    {sections.filter(sub => sub.parent_id === main.id).map(sub => (
+                      <option key={sub.id} value={sub.id} className="text-gray-300">↳ {sub.label}</option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
             </div>

@@ -97,20 +97,64 @@ CREATE TABLE IF NOT EXISTS `shop_items` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- --------------------------------------------------------------------
--- 4) Quick checks
+-- 4) Forum system (Topics and Comments)
 -- --------------------------------------------------------------------
-SELECT 'account columns' AS check_name, COUNT(*) AS ok_count
-FROM information_schema.columns
-WHERE table_schema = DATABASE()
-  AND table_name = 'account'
-  AND column_name IN ('email', 'vp', 'dp');
+CREATE TABLE IF NOT EXISTS `forum_topics` (
+  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `title` VARCHAR(200) NOT NULL,
+  `category` ENUM('general','support','guides','guild','reports','suggestions','announcements') NOT NULL DEFAULT 'general',
+  `author_id` INT UNSIGNED NOT NULL,
+  `pinned` TINYINT(1) NOT NULL DEFAULT 0,
+  `locked` TINYINT(1) NOT NULL DEFAULT 0,
+  `completed` TINYINT(1) NOT NULL DEFAULT 0,
+  `views` INT UNSIGNED NOT NULL DEFAULT 0,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_forum_topics_author` (`author_id`),
+  KEY `idx_forum_topics_category` (`category`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-SELECT 'shop_items exists' AS check_name, COUNT(*) AS ok_count
-FROM information_schema.tables
-WHERE table_schema = DATABASE()
-  AND table_name = 'shop_items';
+CREATE TABLE IF NOT EXISTS `forum_comments` (
+  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `topic_id` INT UNSIGNED NOT NULL,
+  `author_id` INT UNSIGNED NOT NULL,
+  `comment` TEXT NOT NULL,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_forum_comments_topic` (`topic_id`),
+  KEY `idx_forum_comments_author` (`author_id`),
+  CONSTRAINT `fk_forum_comments_topic`
+    FOREIGN KEY (`topic_id`) REFERENCES `forum_topics`(`id`)
+    ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-SELECT 'forum_profiles exists' AS check_name, COUNT(*) AS ok_count
+-- --------------------------------------------------------------------
+-- 5) Purchase History (for account transparency)
+-- --------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `shop_purchases` (
+  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `account_id` INT UNSIGNED NOT NULL,
+  `item_id` INT UNSIGNED NOT NULL,
+  `item_name` VARCHAR(120) NOT NULL DEFAULT '',
+  `currency` ENUM('vp','dp') NOT NULL,
+  `price` INT UNSIGNED NOT NULL,
+  `character_guid` INT UNSIGNED NULL,
+  `character_name` VARCHAR(60) NOT NULL DEFAULT '',
+  `is_gift` TINYINT(1) NOT NULL DEFAULT 0,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_account_created` (`account_id`, `created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- --------------------------------------------------------------------
+-- 6) Summary / Checks
+-- --------------------------------------------------------------------
+SELECT 'Forum tables' AS status, COUNT(*) AS count 
+FROM information_schema.tables 
+WHERE table_schema = DATABASE() AND table_name IN ('forum_topics', 'forum_comments');
+
+SELECT 'Shop purchases exists' AS status, COUNT(*) AS count
 FROM information_schema.tables
-WHERE table_schema = DATABASE()
-  AND table_name = 'forum_profiles';
+WHERE table_schema = DATABASE() AND table_name = 'shop_purchases';

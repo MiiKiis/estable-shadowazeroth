@@ -126,10 +126,6 @@ export default function Footer() {
           <div className="flex flex-col md:flex-row justify-between items-center gap-6 text-center md:text-left">
             <div className="text-gray-600 text-[0.7rem] font-bold uppercase tracking-widest">
               © 2026 SHADOW AZEROTH • Servidor Educativo • World of Warcraft® es marca registrada de Blizzard Entertainment, Inc.
-              <br />
-              <span className="text-xs text-amber-400 mt-2 block">
-                Si ves un error de hidratación, ignóralo. Es causado por extensiones como Dark Reader y no afecta el funcionamiento del sitio.
-              </span>
             </div>
             <div className="flex flex-wrap justify-center gap-6 text-gray-700 text-[0.7rem] font-bold uppercase tracking-widest">
               <Link href="/disclaimer" className="hover:text-[#d4af37] transition-colors text-[10px]">Disclaimer Legal</Link>

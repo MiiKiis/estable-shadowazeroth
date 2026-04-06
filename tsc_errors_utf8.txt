@@ -1,0 +1,4 @@
+﻿check_pve_items.ts(1,7): error TS2451: Cannot redeclare block-scoped variable 'dotenv'.
+scripts/restore-shop.ts(1,7): error TS2451: Cannot redeclare block-scoped variable 'dotenv'.
+src/app/api/shop/purchase/route.ts(678,7): error TS18004: No value exists in scope for the shorthand property 'currency'. Either declare one or provide an initializer.
+test_soap.ts(1,7): error TS2451: Cannot redeclare block-scoped variable 'dotenv'.

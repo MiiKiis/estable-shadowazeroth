@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { authPool } from '@/lib/db';
 import { calculateVerifier, calculateVerifierLegacy } from '@/lib/srp6';
 import { sendPasswordChangedEmail } from '@/lib/email';
+import { RowDataPacket } from 'mysql2';
 
 function toBinaryBuffer(value: unknown): Buffer {
   if (Buffer.isBuffer(value)) return value;
@@ -41,7 +42,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'La nueva contraseña debe tener al menos 6 caracteres' }, { status: 400 });
     }
 
-    const [rows]: any = await authPool.query(
+    if (!authPool) {
+      return NextResponse.json({ error: 'Database pool not available' }, { status: 500 });
+    }
+
+    interface AccountRow extends RowDataPacket {
+      id: number;
+      username: string;
+      email: string;
+      salt: string | Buffer;
+      verifier: string | Buffer;
+    }
+
+    const [rows] = await authPool.query<AccountRow[]>(
       'SELECT id, username, email, salt, verifier FROM account WHERE id = ? LIMIT 1',
       [accountId]
     );
@@ -61,7 +74,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Contraseña actual incorrecta' }, { status: 401 });
     }
 
-    const [pinRows]: any = await authPool.query(
+    interface PinRow extends RowDataPacket {
+      pin_salt: string | Buffer;
+      pin_hash: string | Buffer;
+    }
+
+    const [pinRows] = await authPool.query<PinRow[]>(
       'SELECT pin_salt, pin_hash FROM account_security_pin WHERE account_id = ? LIMIT 1',
       [accountId]
     );
@@ -103,10 +121,11 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({ success: true, message: 'Contraseña actualizada correctamente' }, { status: 200 });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : 'Error del servidor';
     console.error('Account password API error:', error);
     return NextResponse.json(
-      { error: 'Error del servidor', details: error.message },
+      { error: 'Error del servidor', details: errorMsg },
       { status: 500 }
     );
   }

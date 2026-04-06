@@ -1,0 +1,9 @@
+[
+  { "id": "pve", "label": "Equipamiento PvE", "icon": "Swords" },
+  { "id": "pvp", "label": "Equipamiento PvP", "icon": "Shield" },
+  { "id": "mounts", "label": "Monturas y Mascotas", "icon": "Bird" },
+  { "id": "gold", "label": "Oro", "icon": "Coins" },
+  { "id": "transmog", "label": "Transfiguración", "icon": "Sparkles" },
+  { "id": "professions", "label": "Profesiones", "icon": "Wrench" },
+  { "id": "lvl80", "label": "Subir a Nivel 80", "icon": "ArrowUp" }
+]

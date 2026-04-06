@@ -1,0 +1,14 @@
+﻿{
+    "topics":  [
+                   {
+                       "Table":  "forum_topics",
+                       "Create Table":  "CREATE TABLE `forum_topics` (\n  `id` int NOT NULL AUTO_INCREMENT,\n  `title` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,\n  `category` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT \u0027general\u0027,\n  `author_id` int unsigned NOT NULL,\n  `pinned` tinyint(1) NOT NULL DEFAULT \u00270\u0027,\n  `locked` tinyint(1) NOT NULL DEFAULT \u00270\u0027,\n  `completed` tinyint(1) NOT NULL DEFAULT \u00270\u0027,\n  `views` int NOT NULL DEFAULT \u00270\u0027,\n  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,\n  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n  PRIMARY KEY (`id`),\n  KEY `idx_category` (`category`),\n  KEY `idx_pinned_updated` (`pinned`,`updated_at`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+                   }
+               ],
+    "comments":  [
+                     {
+                         "Table":  "forum_comments",
+                         "Create Table":  "CREATE TABLE `forum_comments` (\n  `id` int NOT NULL AUTO_INCREMENT,\n  `topic_id` int NOT NULL,\n  `author_id` int unsigned NOT NULL,\n  `comment` text COLLATE utf8mb4_unicode_ci NOT NULL,\n  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,\n  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n  PRIMARY KEY (`id`),\n  KEY `idx_topic_id` (`topic_id`),\n  CONSTRAINT `forum_comments_ibfk_1` FOREIGN KEY (`topic_id`) REFERENCES `forum_topics` (`id`) ON DELETE CASCADE\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+                     }
+                 ]
+}
