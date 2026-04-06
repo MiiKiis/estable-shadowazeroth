@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import pool, { authPool, getSoapUrl } from '@/lib/db';
+import pool, { authPool, getSoapUrl, worldPool } from '@/lib/db';
 import crypto from 'crypto';
 
 type Currency = 'vp' | 'dp';
@@ -151,6 +151,35 @@ async function sendItemsViaMail(params: {
   items: { entry: number; count: number }[];
   gold?: number;                               // in gold
 }) {
+  const getMaxDurability = (() => {
+    const cache = new Map<number, number>();
+    return async (itemEntry: number) => {
+      if (cache.has(itemEntry)) return cache.get(itemEntry) || 0;
+      try {
+        let value = 0;
+        try {
+          const [rows]: any = await worldPool.query(
+            'SELECT MaxDurability AS maxDurability FROM item_template WHERE entry = ? LIMIT 1',
+            [itemEntry]
+          );
+          value = Number(rows?.[0]?.maxDurability || 0);
+        } catch {
+          const [rows]: any = await worldPool.query(
+            'SELECT maxDurability AS maxDurability FROM item_template WHERE entry = ? LIMIT 1',
+            [itemEntry]
+          );
+          value = Number(rows?.[0]?.maxDurability || 0);
+        }
+        const maxDurability = Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
+        cache.set(itemEntry, maxDurability);
+        return maxDurability;
+      } catch {
+        cache.set(itemEntry, 0);
+        return 0;
+      }
+    };
+  })();
+
   const now = Math.floor(Date.now() / 1000);
   const expireTime = now + 30 * 24 * 3600;      // 30 days
 
@@ -190,12 +219,13 @@ async function sendItemsViaMail(params: {
     for (let i = 0; i < batch.length; i++) {
       const item = batch[i];
       const itemGuid = nextItemGuid++;
+      const maxDurability = await getMaxDurability(item.entry);
 
       // TrinityCore: item_instance (guid, itemEntry, owner_guid, count, enchantments)
       const enchantments = '0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ';
       await pool.query(
-        `INSERT INTO item_instance (guid, itemEntry, owner_guid, count, enchantments) VALUES (?, ?, ?, ?, ?)`,
-        [itemGuid, item.entry, params.receiverGuid, item.count, enchantments]
+        `INSERT INTO item_instance (guid, itemEntry, owner_guid, count, durability, enchantments) VALUES (?, ?, ?, ?, ?, ?)`,
+        [itemGuid, item.entry, params.receiverGuid, item.count, maxDurability, enchantments]
       );
 
       await pool.query(

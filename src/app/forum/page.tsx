@@ -99,11 +99,20 @@ export default function ForumPage() {
   const [realmStats, setRealmStats] = useState<RealmStats | null>(null);
 
   const openNewTopic = () => {
-    // Pre-select the currently active category
+    // Lock posting category to the section where the user clicked
+    setTopicPostCategory(activeCategory);
     setNewCategory(activeCategory);
     setShowNewTopic(v => !v);
   };
   const [newBody, setNewBody]       = useState('');
+  const [topicPostCategory, setTopicPostCategory] = useState('announcements');
+  const [formatPromptOpen, setFormatPromptOpen] = useState(false);
+  const [formatPromptTag, setFormatPromptTag] = useState<'img' | 'color' | 'size' | 'font' | null>(null);
+  const [formatPromptTitle, setFormatPromptTitle] = useState('');
+  const [formatPromptHint, setFormatPromptHint] = useState('');
+  const [formatPromptPlaceholder, setFormatPromptPlaceholder] = useState('');
+  const [formatPromptValue, setFormatPromptValue] = useState('');
+  const [formatPromptPreviewError, setFormatPromptPreviewError] = useState(false);
   const [posting, setPosting]       = useState(false);
   const [postError, setPostError]   = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -135,13 +144,64 @@ export default function ForumPage() {
     }, 0);
   };
 
-  const insertPromptTag = (tag: string, promptText: string) => {
-    const val = window.prompt(promptText);
-    if (!val) return;
-    if (tag === 'img') insertBBCode(`[img]${val}[/img]`, '');
-    if (tag === 'color') insertBBCode(`[color=${val}]`, '[/color]');
-    if (tag === 'size') insertBBCode(`[size=${val}px]`, '[/size]');
-    if (tag === 'font') insertBBCode(`[font=${val}]`, '[/font]');
+  const insertPromptTag = (tag: string) => {
+    if (tag === 'img') {
+      setFormatPromptTag('img');
+      setFormatPromptTitle('Insertar imagen');
+      setFormatPromptHint('Pega la URL directa de la imagen (png, jpg, webp, gif).');
+      setFormatPromptPlaceholder('https://.../imagen.png');
+      setFormatPromptValue('');
+      setFormatPromptPreviewError(false);
+      setFormatPromptOpen(true);
+      return;
+    }
+
+    if (tag === 'color') {
+      setFormatPromptTag('color');
+      setFormatPromptTitle('Color de texto');
+      setFormatPromptHint('Usa nombre (red) o formato HEX (#ff0000).');
+      setFormatPromptPlaceholder('#ff0000');
+      setFormatPromptValue('');
+      setFormatPromptPreviewError(false);
+      setFormatPromptOpen(true);
+      return;
+    }
+
+    if (tag === 'size') {
+      setFormatPromptTag('size');
+      setFormatPromptTitle('Tamaño de fuente');
+      setFormatPromptHint('Ingresa solo número en px. Ejemplo: 24');
+      setFormatPromptPlaceholder('24');
+      setFormatPromptValue('');
+      setFormatPromptPreviewError(false);
+      setFormatPromptOpen(true);
+      return;
+    }
+
+    if (tag === 'font') {
+      setFormatPromptTag('font');
+      setFormatPromptTitle('Fuente de texto');
+      setFormatPromptHint('Ejemplo: Georgia, Verdana, Courier New');
+      setFormatPromptPlaceholder('Georgia');
+      setFormatPromptValue('');
+      setFormatPromptPreviewError(false);
+      setFormatPromptOpen(true);
+    }
+  };
+
+  const applyPromptTag = () => {
+    const val = formatPromptValue.trim();
+    if (!val || !formatPromptTag) return;
+
+    if (formatPromptTag === 'img') insertBBCode(`[img]${val}[/img]`, '');
+    if (formatPromptTag === 'color') insertBBCode(`[color=${val}]`, '[/color]');
+    if (formatPromptTag === 'size') insertBBCode(`[size=${val}px]`, '[/size]');
+    if (formatPromptTag === 'font') insertBBCode(`[font=${val}]`, '[/font]');
+
+    setFormatPromptOpen(false);
+    setFormatPromptTag(null);
+    setFormatPromptValue('');
+    setFormatPromptPreviewError(false);
   };
 
   useEffect(() => {
@@ -177,12 +237,12 @@ export default function ForumPage() {
 
   useEffect(() => {
     if (newBody.trim().length > 0) return;
-    if (newCategory === 'support') {
+    if (topicPostCategory === 'support') {
       setNewBody(SUPPORT_TEMPLATE);
-    } else if (newCategory === 'reports') {
+    } else if (topicPostCategory === 'reports') {
       setNewBody(REPORT_TEMPLATE);
     }
-  }, [newCategory, newBody]);
+  }, [topicPostCategory, newBody]);
 
   const handleNewTopic = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -193,7 +253,7 @@ export default function ForumPage() {
       const res = await fetch('/api/forum/topics', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.id, title: newTitle, category: newCategory, comment: newBody }),
+        body: JSON.stringify({ userId: user.id, title: newTitle, category: topicPostCategory, comment: newBody }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Error creando tema');
@@ -347,30 +407,20 @@ export default function ForumPage() {
                 required
               />
 
-              {/* Visual category picker */}
+              {/* Locked posting category (no user choice to avoid confusion) */}
               <div>
-                <p className="text-xs font-black uppercase tracking-widest text-gray-400 mb-2">¿Dónde va este tema?</p>
-                <select
-                  value={newCategory}
-                  onChange={e => setNewCategory(e.target.value)}
-                  className="w-full h-12 px-4 rounded-xl bg-black/60 border border-purple-900/50 text-sm text-white focus:outline-none focus:ring-2 focus:ring-purple-500/60 transition-all font-semibold"
-                >
-                  {mainSections.map(parent => {
-                    const subs = sections.filter(s => s.parent_id === parent.id);
-                    return (
-                      <optgroup key={parent.id} label={parent.label.toUpperCase()} className="bg-gray-900 text-purple-300 font-black">
-                        {(!parent.is_locked || isStaffGM) && <option value={parent.id} className="text-white font-medium">✨ {parent.label} (Categoría General)</option>}
-                        {subs.map(sub => (
-                          (!sub.is_locked || isStaffGM) && (
-                            <option key={sub.id} value={sub.id} className="text-gray-300 pl-4 font-normal">
-                              ↳ {sub.label}
-                            </option>
-                          )
-                        ))}
-                      </optgroup>
-                    );
-                  })}
-                </select>
+                <p className="text-xs font-black uppercase tracking-widest text-gray-400 mb-2">Publicando en</p>
+                <div className="w-full min-h-12 px-4 py-3 rounded-xl bg-black/60 border border-amber-500/35 text-sm text-white font-semibold flex items-center justify-between gap-3">
+                  <span className="truncate">
+                    {sections.find((s) => s.id === topicPostCategory)?.label || topicPostCategory}
+                  </span>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-amber-300 border border-amber-500/35 rounded-full px-2 py-0.5 shrink-0">
+                    Bloqueado
+                  </span>
+                </div>
+                <p className="text-[11px] text-gray-500 mt-1">
+                  La categoría se fija automáticamente según donde abriste “Nuevo Tema”.
+                </p>
               </div>
               <div className="bg-[#03060d]/60 border border-purple-500/20 rounded-2xl overflow-hidden flex flex-col">
                 <div className="border-b border-purple-500/20 bg-purple-900/10 p-2 flex flex-wrap gap-1">
@@ -380,9 +430,9 @@ export default function ForumPage() {
                   <div className="w-px h-6 bg-purple-500/20 mx-1 self-center" />
                   <button type="button" onClick={() => insertBBCode('[center]', '[/center]')} className="p-2 hover:bg-purple-900/40 rounded-lg text-gray-300 hover:text-white transition-colors" title="Centrar"><AlignCenter className="w-4 h-4" /></button>
                   <div className="w-px h-6 bg-purple-500/20 mx-1 self-center" />
-                  <button type="button" onClick={() => insertPromptTag('color', 'Introduce color hex (ej: #ff0000 o red):')} className="p-2 hover:bg-purple-900/40 rounded-lg text-cyan-300 hover:text-cyan-200 transition-colors" title="Color de Texto"><Palette className="w-4 h-4" /></button>
-                  <button type="button" onClick={() => insertPromptTag('size', 'Introduce tamaño numérico en px (ej: 24):')} className="p-2 hover:bg-purple-900/40 rounded-lg text-cyan-300 hover:text-cyan-200 transition-colors" title="Tamaño de Fuente"><Type className="w-4 h-4" /></button>
-                  <button type="button" onClick={() => insertPromptTag('img', 'Introduce URL de la imagen:')} className="p-2 hover:bg-purple-900/40 rounded-lg text-fuchsia-400 hover:text-fuchsia-300 transition-colors" title="Insertar Imagen"><ImageIcon className="w-4 h-4" /></button>
+                  <button type="button" onClick={() => insertPromptTag('color')} className="p-2 hover:bg-purple-900/40 rounded-lg text-cyan-300 hover:text-cyan-200 transition-colors" title="Color de Texto"><Palette className="w-4 h-4" /></button>
+                  <button type="button" onClick={() => insertPromptTag('size')} className="p-2 hover:bg-purple-900/40 rounded-lg text-cyan-300 hover:text-cyan-200 transition-colors" title="Tamaño de Fuente"><Type className="w-4 h-4" /></button>
+                  <button type="button" onClick={() => insertPromptTag('img')} className="p-2 hover:bg-purple-900/40 rounded-lg text-fuchsia-400 hover:text-fuchsia-300 transition-colors" title="Insertar Imagen"><ImageIcon className="w-4 h-4" /></button>
                 </div>
                 <textarea
                   ref={textareaRef}
@@ -774,6 +824,83 @@ export default function ForumPage() {
           </aside>
         </div>
       </div>
+
+      {formatPromptOpen && (
+        <div className="fixed inset-0 z-[95] flex items-center justify-center p-4" onClick={() => setFormatPromptOpen(false)}>
+          <div className="absolute inset-0 bg-black/75 backdrop-blur-sm" />
+          <div
+            className="relative w-full max-w-lg rounded-3xl border border-amber-400/30 bg-[#0a0f19]/95 shadow-[0_0_40px_rgba(245,158,11,0.25)] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-5 py-4 border-b border-amber-500/20 bg-gradient-to-r from-amber-900/25 to-purple-900/25">
+              <p className="text-[10px] font-black uppercase tracking-[0.24em] text-amber-300">Editor Shadow Shop</p>
+              <h3 className="text-lg font-black text-white mt-1">{formatPromptTitle}</h3>
+              <p className="text-xs text-gray-400 mt-1">{formatPromptHint}</p>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <input
+                autoFocus
+                type="text"
+                value={formatPromptValue}
+                onChange={(e) => {
+                  setFormatPromptValue(e.target.value);
+                  if (formatPromptTag === 'img') setFormatPromptPreviewError(false);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    applyPromptTag();
+                  }
+                }}
+                placeholder={formatPromptPlaceholder}
+                className="w-full h-12 rounded-xl border border-amber-500/30 bg-black/50 px-4 text-white placeholder:text-gray-500 focus:outline-none focus:border-amber-400/70"
+              />
+
+              {formatPromptTag === 'img' && (
+                <div className="space-y-2">
+                  <p className="text-[11px] text-cyan-300/90 font-semibold">
+                    Tip: usa enlaces directos que terminen en formato de imagen para que se vea en el post.
+                  </p>
+                  {formatPromptValue.trim() ? (
+                    <div className="rounded-xl border border-cyan-400/30 bg-black/45 p-2">
+                      {!formatPromptPreviewError ? (
+                        <img
+                          src={formatPromptValue.trim()}
+                          alt="Preview"
+                          className="max-h-48 w-auto max-w-full object-contain mx-auto rounded-lg"
+                          onError={() => setFormatPromptPreviewError(true)}
+                        />
+                      ) : (
+                        <p className="text-xs text-rose-300 text-center py-3 font-semibold">
+                          No se pudo cargar la imagen con esa URL.
+                        </p>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setFormatPromptOpen(false)}
+                  className="px-4 py-2 rounded-xl border border-white/20 text-gray-300 hover:text-white hover:bg-white/5 text-xs font-black uppercase tracking-widest"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={applyPromptTag}
+                  className="px-4 py-2 rounded-xl border border-amber-400/40 bg-gradient-to-r from-amber-600/80 to-orange-600/80 text-white hover:from-amber-500 hover:to-orange-500 text-xs font-black uppercase tracking-widest shadow-[0_0_20px_rgba(245,158,11,0.35)]"
+                >
+                  Insertar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

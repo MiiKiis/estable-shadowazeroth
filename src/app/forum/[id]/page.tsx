@@ -149,6 +149,16 @@ export default function TopicPage() {
   const [isStaff,      setIsStaff]      = useState(false);
   const [deletingTopic, setDeletingTopic] = useState(false);
   const [togglingCompleted, setTogglingCompleted] = useState(false);
+  const [formatPromptOpen, setFormatPromptOpen] = useState(false);
+  const [formatPromptTag, setFormatPromptTag] = useState<'img' | 'color' | 'size' | 'font' | null>(null);
+  const [formatPromptTitle, setFormatPromptTitle] = useState('');
+  const [formatPromptHint, setFormatPromptHint] = useState('');
+  const [formatPromptPlaceholder, setFormatPromptPlaceholder] = useState('');
+  const [formatPromptValue, setFormatPromptValue] = useState('');
+  const [formatPromptPreviewError, setFormatPromptPreviewError] = useState(false);
+  const [deleteModal, setDeleteModal] = useState<{ type: 'comment' | 'topic'; commentId?: number } | null>(null);
+  const [deleteModalLoading, setDeleteModalLoading] = useState(false);
+  const [deleteModalError, setDeleteModalError] = useState('');
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const replyRef  = useRef<HTMLTextAreaElement>(null);
@@ -174,13 +184,64 @@ export default function TopicPage() {
     }, 0);
   };
 
-  const insertPromptTag = (tag: string, promptText: string) => {
-    const val = window.prompt(promptText);
-    if (!val) return;
-    if (tag === 'img') insertBBCode(`[img]${val}[/img]`, '');
-    if (tag === 'color') insertBBCode(`[color=${val}]`, '[/color]');
-    if (tag === 'size') insertBBCode(`[size=${val}px]`, '[/size]');
-    if (tag === 'font') insertBBCode(`[font=${val}]`, '[/font]');
+  const insertPromptTag = (tag: string) => {
+    if (tag === 'img') {
+      setFormatPromptTag('img');
+      setFormatPromptTitle('Insertar imagen');
+      setFormatPromptHint('Pega la URL directa de la imagen (png, jpg, webp, gif).');
+      setFormatPromptPlaceholder('https://.../imagen.png');
+      setFormatPromptValue('');
+      setFormatPromptPreviewError(false);
+      setFormatPromptOpen(true);
+      return;
+    }
+
+    if (tag === 'color') {
+      setFormatPromptTag('color');
+      setFormatPromptTitle('Color de texto');
+      setFormatPromptHint('Usa nombre (red) o formato HEX (#ff0000).');
+      setFormatPromptPlaceholder('#ff0000');
+      setFormatPromptValue('');
+      setFormatPromptPreviewError(false);
+      setFormatPromptOpen(true);
+      return;
+    }
+
+    if (tag === 'size') {
+      setFormatPromptTag('size');
+      setFormatPromptTitle('Tamaño de fuente');
+      setFormatPromptHint('Ingresa solo número en px. Ejemplo: 24');
+      setFormatPromptPlaceholder('24');
+      setFormatPromptValue('');
+      setFormatPromptPreviewError(false);
+      setFormatPromptOpen(true);
+      return;
+    }
+
+    if (tag === 'font') {
+      setFormatPromptTag('font');
+      setFormatPromptTitle('Fuente de texto');
+      setFormatPromptHint('Ejemplo: Georgia, Verdana, Courier New');
+      setFormatPromptPlaceholder('Georgia');
+      setFormatPromptValue('');
+      setFormatPromptPreviewError(false);
+      setFormatPromptOpen(true);
+    }
+  };
+
+  const applyPromptTag = () => {
+    const val = formatPromptValue.trim();
+    if (!val || !formatPromptTag) return;
+
+    if (formatPromptTag === 'img') insertBBCode(`[img]${val}[/img]`, '');
+    if (formatPromptTag === 'color') insertBBCode(`[color=${val}]`, '[/color]');
+    if (formatPromptTag === 'size') insertBBCode(`[size=${val}px]`, '[/size]');
+    if (formatPromptTag === 'font') insertBBCode(`[font=${val}]`, '[/font]');
+
+    setFormatPromptOpen(false);
+    setFormatPromptTag(null);
+    setFormatPromptValue('');
+    setFormatPromptPreviewError(false);
   };
 
   useEffect(() => {
@@ -261,7 +322,12 @@ export default function TopicPage() {
 
   const handleDelete = async (commentId: number) => {
     if (!user) return;
-    if (!confirm('¿Estás seguro de que quieres eliminar este comentario?')) return;
+    setDeleteModal({ type: 'comment', commentId });
+    setDeleteModalError('');
+  };
+
+  const executeDeleteComment = async (commentId: number) => {
+    if (!user) return;
     try {
       const res = await fetch(
         `/api/forum/topics/${topicId}/comments?commentId=${commentId}&userId=${user.id}`,
@@ -271,14 +337,18 @@ export default function TopicPage() {
       if (!res.ok) throw new Error(data.error || 'Error al eliminar');
       await loadData();
     } catch (err: any) {
-      alert(err.message);
+      throw new Error(err.message || 'No se pudo eliminar el comentario');
     }
   };
 
   const handleDeleteTopic = async () => {
     if (!user || !isGM) return;
-    if (!confirm('¿Seguro que quieres borrar ESTE TEMA COMPLETO? Esta acción elimina también todos los comentarios y no se puede deshacer.')) return;
+    setDeleteModal({ type: 'topic' });
+    setDeleteModalError('');
+  };
 
+  const executeDeleteTopic = async () => {
+    if (!user || !isGM) return;
     setDeletingTopic(true);
     try {
       const res = await fetch(`/api/forum/topics/${topicId}?userId=${user.id}`, {
@@ -288,9 +358,27 @@ export default function TopicPage() {
       if (!res.ok) throw new Error(data.error || 'Error eliminando tema');
       router.push('/forum');
     } catch (err: any) {
-      alert(err.message || 'No se pudo eliminar el tema');
+      throw new Error(err.message || 'No se pudo eliminar el tema');
     } finally {
       setDeletingTopic(false);
+    }
+  };
+
+  const confirmDeleteFromModal = async () => {
+    if (!deleteModal) return;
+    setDeleteModalLoading(true);
+    setDeleteModalError('');
+    try {
+      if (deleteModal.type === 'comment') {
+        await executeDeleteComment(Number(deleteModal.commentId));
+      } else {
+        await executeDeleteTopic();
+      }
+      setDeleteModal(null);
+    } catch (err: any) {
+      setDeleteModalError(err.message || 'No se pudo completar la acción');
+    } finally {
+      setDeleteModalLoading(false);
     }
   };
 
@@ -607,9 +695,9 @@ export default function TopicPage() {
                     <div className="w-px h-6 bg-purple-500/20 mx-1 self-center" />
                     <button type="button" onClick={() => insertBBCode('[center]', '[/center]')} className="p-2 hover:bg-purple-900/40 rounded-lg text-gray-300 hover:text-white transition-colors" title="Centrar"><AlignCenter className="w-4 h-4" /></button>
                     <div className="w-px h-6 bg-purple-500/20 mx-1 self-center" />
-                    <button type="button" onClick={() => insertPromptTag('color', 'Introduce color hex (ej: #ff0000 o red):')} className="p-2 hover:bg-purple-900/40 rounded-lg text-cyan-300 hover:text-cyan-200 transition-colors" title="Color de Texto"><Palette className="w-4 h-4" /></button>
-                    <button type="button" onClick={() => insertPromptTag('size', 'Introduce tamaño numérico en px (ej: 24):')} className="p-2 hover:bg-purple-900/40 rounded-lg text-cyan-300 hover:text-cyan-200 transition-colors" title="Tamaño de Fuente"><Type className="w-4 h-4" /></button>
-                    <button type="button" onClick={() => insertPromptTag('img', 'Introduce URL de la imagen:')} className="p-2 hover:bg-purple-900/40 rounded-lg text-fuchsia-400 hover:text-fuchsia-300 transition-colors" title="Insertar Imagen"><ImageIcon className="w-4 h-4" /></button>
+                    <button type="button" onClick={() => insertPromptTag('color')} className="p-2 hover:bg-purple-900/40 rounded-lg text-cyan-300 hover:text-cyan-200 transition-colors" title="Color de Texto"><Palette className="w-4 h-4" /></button>
+                    <button type="button" onClick={() => insertPromptTag('size')} className="p-2 hover:bg-purple-900/40 rounded-lg text-cyan-300 hover:text-cyan-200 transition-colors" title="Tamaño de Fuente"><Type className="w-4 h-4" /></button>
+                    <button type="button" onClick={() => insertPromptTag('img')} className="p-2 hover:bg-purple-900/40 rounded-lg text-fuchsia-400 hover:text-fuchsia-300 transition-colors" title="Insertar Imagen"><ImageIcon className="w-4 h-4" /></button>
                   </div>
                   <textarea
                     ref={replyRef}
@@ -664,6 +752,132 @@ export default function TopicPage() {
           </div>
         )}
       </div>
+
+      {formatPromptOpen && (
+        <div className="fixed inset-0 z-[95] flex items-center justify-center p-4" onClick={() => setFormatPromptOpen(false)}>
+          <div className="absolute inset-0 bg-black/75 backdrop-blur-sm" />
+          <div
+            className="relative w-full max-w-lg rounded-3xl border border-amber-400/30 bg-[#0a0f19]/95 shadow-[0_0_40px_rgba(245,158,11,0.25)] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-5 py-4 border-b border-amber-500/20 bg-gradient-to-r from-amber-900/25 to-purple-900/25">
+              <p className="text-[10px] font-black uppercase tracking-[0.24em] text-amber-300">Editor Shadow Shop</p>
+              <h3 className="text-lg font-black text-white mt-1">{formatPromptTitle}</h3>
+              <p className="text-xs text-gray-400 mt-1">{formatPromptHint}</p>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <input
+                autoFocus
+                type="text"
+                value={formatPromptValue}
+                onChange={(e) => {
+                  setFormatPromptValue(e.target.value);
+                  if (formatPromptTag === 'img') setFormatPromptPreviewError(false);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    applyPromptTag();
+                  }
+                }}
+                placeholder={formatPromptPlaceholder}
+                className="w-full h-12 rounded-xl border border-amber-500/30 bg-black/50 px-4 text-white placeholder:text-gray-500 focus:outline-none focus:border-amber-400/70"
+              />
+
+              {formatPromptTag === 'img' && (
+                <div className="space-y-2">
+                  <p className="text-[11px] text-cyan-300/90 font-semibold">
+                    Tip: usa enlaces directos que terminen en formato de imagen para que se vea en el post.
+                  </p>
+                  {formatPromptValue.trim() ? (
+                    <div className="rounded-xl border border-cyan-400/30 bg-black/45 p-2">
+                      {!formatPromptPreviewError ? (
+                        <img
+                          src={formatPromptValue.trim()}
+                          alt="Preview"
+                          className="max-h-48 w-auto max-w-full object-contain mx-auto rounded-lg"
+                          onError={() => setFormatPromptPreviewError(true)}
+                        />
+                      ) : (
+                        <p className="text-xs text-rose-300 text-center py-3 font-semibold">
+                          No se pudo cargar la imagen con esa URL.
+                        </p>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setFormatPromptOpen(false)}
+                  className="px-4 py-2 rounded-xl border border-white/20 text-gray-300 hover:text-white hover:bg-white/5 text-xs font-black uppercase tracking-widest"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={applyPromptTag}
+                  className="px-4 py-2 rounded-xl border border-amber-400/40 bg-gradient-to-r from-amber-600/80 to-orange-600/80 text-white hover:from-amber-500 hover:to-orange-500 text-xs font-black uppercase tracking-widest shadow-[0_0_20px_rgba(245,158,11,0.35)]"
+                >
+                  Insertar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteModal && (
+        <div className="fixed inset-0 z-[96] flex items-center justify-center p-4" onClick={() => !deleteModalLoading && setDeleteModal(null)}>
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
+          <div
+            className="relative w-full max-w-xl rounded-3xl border border-rose-500/35 bg-[#110a12]/95 shadow-[0_0_42px_rgba(244,63,94,0.25)] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-6 py-4 border-b border-rose-500/20 bg-gradient-to-r from-rose-900/30 to-purple-900/20">
+              <p className="text-[10px] font-black uppercase tracking-[0.24em] text-rose-300">Confirmación crítica</p>
+              <h3 className="text-lg font-black text-white mt-1">
+                {deleteModal.type === 'topic' ? 'Eliminar tema completo' : 'Eliminar comentario'}
+              </h3>
+              <p className="text-xs text-rose-200/80 mt-1">
+                {deleteModal.type === 'topic'
+                  ? 'Esta acción borra también todos los comentarios y no se puede deshacer.'
+                  : 'Esta acción eliminará el comentario de forma permanente.'}
+              </p>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {deleteModalError && (
+                <div className="rounded-xl border border-rose-400/35 bg-rose-900/25 px-4 py-3 text-sm text-rose-200">
+                  {deleteModalError}
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  disabled={deleteModalLoading}
+                  onClick={() => setDeleteModal(null)}
+                  className="px-4 py-2 rounded-xl border border-white/20 text-gray-300 hover:text-white hover:bg-white/5 text-xs font-black uppercase tracking-widest disabled:opacity-60"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  disabled={deleteModalLoading}
+                  onClick={confirmDeleteFromModal}
+                  className="px-4 py-2 rounded-xl border border-rose-400/40 bg-gradient-to-r from-rose-700/90 to-red-700/90 text-white hover:from-rose-600 hover:to-red-600 text-xs font-black uppercase tracking-widest shadow-[0_0_20px_rgba(244,63,94,0.35)] disabled:opacity-60"
+                >
+                  {deleteModalLoading ? 'Eliminando...' : 'Sí, eliminar'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

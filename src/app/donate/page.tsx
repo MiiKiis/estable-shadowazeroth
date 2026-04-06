@@ -1,6 +1,6 @@
 'use client';
 
-import { Sparkles, CreditCard, Gift, TrendingUp, X, Shield, ShoppingCart, CheckCircle2, AlertTriangle, Search, Users, Heart, Zap, Package, ChevronLeft, Tag, User } from 'lucide-react';
+import { Sparkles, CreditCard, Gift, TrendingUp, X, Shield, ShoppingCart, CheckCircle2, AlertTriangle, Search, Users, Heart, Zap, Package, ChevronLeft, Tag, User, Ticket, Timer, Crown, Target } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import React, { useEffect, useState, useRef } from 'react';
 import Image from 'next/image';
@@ -183,6 +183,17 @@ const GS_RANGES = [
   { id: '259-264', name: '259-264 (Heroico/Lich)', min: 259, max: 264 },
 ];
 
+function getWowItemBorderClass(qualityId?: number) {
+  switch (Number(qualityId || 1)) {
+    case 2: return 'border-green-400/75';
+    case 3: return 'border-blue-400/75';
+    case 4: return 'border-purple-400/80';
+    case 5: return 'border-orange-400/85';
+    case 6: return 'border-amber-300/90';
+    default: return 'border-white/40';
+  }
+}
+
 type CharacterOption = {
   guid: number;
   name: string;
@@ -211,6 +222,36 @@ type ShopItem = {
   item_level?: number;
   description?: string;
   service_type?: string;
+};
+
+type RaffleItem = {
+  id: number;
+  title: string;
+  description: string | null;
+  prizeText: string;
+  prizeItemId?: number | null;
+  prizeItem?: {
+    itemId: number;
+    iconName: string;
+    iconUrl: string;
+    itemUrl: string;
+    qualityId: number;
+  } | null;
+  status: 'draft' | 'active' | 'closed' | 'drawn';
+  startsAt: string;
+  endsAt: string;
+  winnerAccountId: number | null;
+  winnerNote?: string | null;
+  drawnAt: string | null;
+  totalTickets: number;
+  myTickets: number;
+  remainingForMe: number;
+  maxTicketsPerAccount: number;
+  ticketCosts: {
+    dp: number;
+    vp: number;
+    gold: number;
+  };
 };
 
 export default function DonatePage() {
@@ -242,7 +283,7 @@ export default function DonatePage() {
   const [purchaseMessage, setPurchaseMessage] = useState<string>('');
   const [purchaseError, setPurchaseError] = useState<string>('');
   const [purchasingItemId, setPurchasingItemId] = useState<number | null>(null);
-  const [activeTab, setActiveTab] = useState<'rewards' | 'donations'>('rewards');
+  const [activeTab, setActiveTab] = useState<'rewards' | 'donations' | 'raffles'>('rewards');
   const [subCategoryFilter, setSubCategoryFilter] = useState<string | null>(null);
   const [targetAccountId, setTargetAccountId] = useState<string>('');
   const [customAmount, setCustomAmount] = useState<string>('');
@@ -254,6 +295,24 @@ export default function DonatePage() {
   const [activeKitId, setActiveKitId] = useState<number | null>(null);
   const [isPayPalLoaded, setIsPayPalLoaded] = useState(false);
   const [paymentResult, setPaymentResult] = useState<{ success: boolean; message: string; transactionId?: string; points?: number } | null>(null);
+  const [raffles, setRaffles] = useState<RaffleItem[]>([]);
+  const [raffleLoading, setRaffleLoading] = useState(false);
+  const [raffleError, setRaffleError] = useState('');
+  const [ticketQtyByRaffle, setTicketQtyByRaffle] = useState<Record<number, number>>({});
+  const [ticketCurrencyByRaffle, setTicketCurrencyByRaffle] = useState<Record<number, 'dp' | 'vp' | 'gold'>>({});
+  const [buyingRaffleId, setBuyingRaffleId] = useState<number | null>(null);
+  const [raffleMessage, setRaffleMessage] = useState('');
+  const [raffleGoldCharacterGuid, setRaffleGoldCharacterGuid] = useState<string>('');
+  const [adminRaffleForm, setAdminRaffleForm] = useState({
+    title: '',
+    description: '',
+    prizeText: '',
+    prizeItemId: '',
+    startsAt: '',
+    endsAt: '',
+    status: 'draft' as 'draft' | 'active' | 'closed',
+  });
+  const [savingRaffleAdmin, setSavingRaffleAdmin] = useState(false);
 
   useEffect(() => {
     fetch('/api/shop/categories')
@@ -330,6 +389,14 @@ export default function DonatePage() {
     }
   };
 
+  const handleMouseEnter = (e: React.MouseEvent<HTMLDivElement>) => {
+    const link = e.currentTarget.querySelector('a[data-wowhead]');
+    if (link) {
+      link.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+      link.dispatchEvent(new MouseEvent('mousemove', { bubbles: true }));
+    }
+  };
+
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
     if (!storedUser) {
@@ -352,6 +419,156 @@ export default function DonatePage() {
       setCheckingAuth(false);
     }
   }, []);
+
+  const loadRaffles = async () => {
+    setRaffleLoading(true);
+    setRaffleError('');
+    try {
+      const accountId = user?.id ? `?accountId=${user.id}${gmLevel >= 3 ? '&includeAdmin=1' : ''}` : '';
+      const res = await fetch(`/api/raffle${accountId}`, { cache: 'no-store' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'No se pudieron cargar sorteos');
+      setRaffles(Array.isArray(data.raffles) ? data.raffles : []);
+    } catch (err: any) {
+      setRaffleError(err.message || 'Error cargando sorteos');
+    } finally {
+      setRaffleLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadRaffles();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, gmLevel]);
+
+  const handleBuyTickets = async (raffleId: number) => {
+    if (!user) {
+      setRaffleError('Debes iniciar sesión para comprar tickets.');
+      return;
+    }
+
+    const quantity = Number(ticketQtyByRaffle[raffleId] || 1);
+    const currency = ticketCurrencyByRaffle[raffleId] || 'dp';
+
+    if (!Number.isInteger(quantity) || quantity <= 0) {
+      setRaffleError('La cantidad de tickets debe ser mayor a 0.');
+      return;
+    }
+
+    if (!raffleGoldCharacterGuid) {
+      setRaffleError('Debes seleccionar el personaje destino que recibirá el premio del sorteo.');
+      return;
+    }
+
+    setBuyingRaffleId(raffleId);
+    setRaffleError('');
+    setRaffleMessage('');
+
+    try {
+      const res = await fetch('/api/raffle/buy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          raffleId,
+          accountId: user.id,
+          quantity,
+          currency,
+          characterGuid: Number(raffleGoldCharacterGuid),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'No se pudo completar la compra de tickets');
+      setRaffleMessage(data.message || 'Tickets comprados correctamente.');
+      await loadRaffles();
+    } catch (err: any) {
+      setRaffleError(err.message || 'Error comprando tickets');
+    } finally {
+      setBuyingRaffleId(null);
+    }
+  };
+
+  const handleCreateRaffle = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || gmLevel < 3) return;
+
+    setSavingRaffleAdmin(true);
+    setRaffleError('');
+    setRaffleMessage('');
+    try {
+      const res = await fetch('/api/admin/raffle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.id,
+          ...adminRaffleForm,
+          prizeItemId: adminRaffleForm.prizeItemId ? Number(adminRaffleForm.prizeItemId) : null,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'No se pudo crear el sorteo');
+      setRaffleMessage('Sorteo creado correctamente.');
+      setAdminRaffleForm({
+        title: '',
+        description: '',
+        prizeText: '',
+        prizeItemId: '',
+        startsAt: '',
+        endsAt: '',
+        status: 'draft',
+      });
+      await loadRaffles();
+    } catch (err: any) {
+      setRaffleError(err.message || 'Error creando sorteo');
+    } finally {
+      setSavingRaffleAdmin(false);
+    }
+  };
+
+  const handleRaffleStatusUpdate = async (raffleId: number, status: 'draft' | 'active' | 'closed') => {
+    if (!user || gmLevel < 3) return;
+
+    setSavingRaffleAdmin(true);
+    setRaffleError('');
+    setRaffleMessage('');
+    try {
+      const res = await fetch('/api/admin/raffle', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id, raffleId, status }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'No se pudo actualizar el estado');
+      setRaffleMessage('Estado del sorteo actualizado.');
+      await loadRaffles();
+    } catch (err: any) {
+      setRaffleError(err.message || 'Error actualizando sorteo');
+    } finally {
+      setSavingRaffleAdmin(false);
+    }
+  };
+
+  const handleDrawRaffle = async (raffleId: number) => {
+    if (!user || gmLevel < 3) return;
+
+    setSavingRaffleAdmin(true);
+    setRaffleError('');
+    setRaffleMessage('');
+    try {
+      const res = await fetch('/api/admin/raffle/draw', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id, raffleId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'No se pudo ejecutar el sorteo');
+      setRaffleMessage(data.message || `Ganador: cuenta ${data.winnerAccountId}`);
+      await loadRaffles();
+    } catch (err: any) {
+      setRaffleError(err.message || 'Error al sortear ganador');
+    } finally {
+      setSavingRaffleAdmin(false);
+    }
+  };
 
   const handlePurchase = async (itemId: number, currency: 'vp' | 'dp') => {
     // Guard síncrono: si ya hay una compra en vuelo, ignorar todos los clicks adicionales
@@ -506,34 +723,35 @@ export default function DonatePage() {
       
       <div className="absolute inset-0 bg-[#070b16]/60 backdrop-blur-[2px] z-0" />
 
-      <div className="max-w-6xl mx-auto px-6 relative z-10">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 relative z-10">
         
         <div className="mb-12 text-center">
             <motion.h1 
               initial={{ opacity: 0, y: -20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="text-6xl font-black italic tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-indigo-300 to-cyan-400 uppercase leading-[1.1] mb-2"
+              className="text-4xl sm:text-5xl lg:text-6xl font-black italic tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-indigo-300 to-cyan-400 uppercase leading-[1.1] mb-2"
             >
               Donación & Recompensas
             </motion.h1>
-            <p className="text-gray-400 font-medium tracking-[0.2em] uppercase text-xs">Apoya al servidor y obtén beneficios exclusivos</p>
+            <p className="text-gray-400 font-medium tracking-[0.16em] sm:tracking-[0.2em] uppercase text-[10px] sm:text-xs">Apoya al servidor y obtén beneficios exclusivos</p>
         </div>
 
-        <div className="flex justify-center gap-4 mb-12">
+        <div className="flex justify-center flex-wrap gap-3 sm:gap-4 mb-10 sm:mb-12">
           {[
             { id: 'donations', label: 'Cargar Créditos', icon: CreditCard, color: 'purple' },
-            { id: 'rewards', label: 'Tienda de Objetos', icon: ShoppingCart, color: 'cyan' }
+            { id: 'rewards', label: 'Tienda de Objetos', icon: ShoppingCart, color: 'cyan' },
+            { id: 'raffles', label: 'Sorteos', icon: Gift, color: 'pink' }
           ].map(tab => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
-              className={`flex items-center gap-3 px-10 py-5 rounded-3xl font-black uppercase tracking-wider text-sm transition-all duration-300 ${
+              className={`flex items-center gap-2 sm:gap-3 px-4 sm:px-8 lg:px-10 py-3 sm:py-4 lg:py-5 rounded-2xl sm:rounded-3xl font-black uppercase tracking-wider text-[11px] sm:text-sm transition-all duration-300 ${
                 activeTab === tab.id 
-                  ? `bg-gradient-to-r ${tab.color === 'purple' ? 'from-purple-600 to-indigo-600 shadow-[0_0_25px_rgba(168,85,247,0.4)]' : 'from-cyan-600 to-blue-600 shadow-[0_0_25px_rgba(6,182,212,0.4)]'} text-white` 
+                  ? `bg-gradient-to-r ${tab.color === 'purple' ? 'from-purple-600 to-indigo-600 shadow-[0_0_25px_rgba(168,85,247,0.4)]' : tab.color === 'cyan' ? 'from-cyan-600 to-blue-600 shadow-[0_0_25px_rgba(6,182,212,0.4)]' : 'from-pink-600 to-rose-600 shadow-[0_0_25px_rgba(236,72,153,0.4)]'} text-white` 
                   : 'bg-black/40 border border-white/5 text-gray-500 hover:text-white hover:bg-white/5'
               }`}
             >
-              <tab.icon className="w-5 h-5" />
+              <tab.icon className="w-4 h-4 sm:w-5 sm:h-5" />
               {tab.label}
             </button>
           ))}
@@ -585,6 +803,359 @@ export default function DonatePage() {
                   </button>
                 </motion.div>
               </div>
+            </motion.section>
+          )}
+
+          {activeTab === 'raffles' && (
+            <motion.section
+              key="raffles"
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -16 }}
+              className="mb-12 space-y-8"
+            >
+              <div className="relative overflow-hidden rounded-[2rem] border border-pink-500/30 bg-gradient-to-br from-[#18070f]/90 via-[#0f0b1f]/85 to-[#0b1222]/80 p-8">
+                <div className="absolute inset-0 opacity-20" style={{
+                  backgroundImage: 'radial-gradient(circle at 12px 12px, rgba(255,255,255,0.28) 2px, transparent 2px)',
+                  backgroundSize: '24px 24px'
+                }} />
+                <div className="absolute -top-16 left-1/2 -translate-x-1/2 w-[40rem] h-44 bg-pink-500/25 blur-3xl" />
+
+                <div className="relative z-10 text-center space-y-3">
+                  <div className="flex items-center justify-center gap-2 text-pink-300">
+                    <Ticket className="w-5 h-5" />
+                    <span className="text-xs font-black uppercase tracking-[0.24em]">Modo Pachinko</span>
+                  </div>
+                  <h2 className="text-4xl md:text-5xl font-black italic uppercase tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-pink-300 via-fuchsia-300 to-cyan-300">
+                    Sorteos de Shadow Azeroth
+                  </h2>
+                  <p className="text-sm text-pink-100/80 font-semibold uppercase tracking-widest">
+                    Límite por cuenta: 1000 tickets por sorteo
+                  </p>
+                  <p className="text-xs text-gray-300 font-bold uppercase tracking-[0.18em]">
+                    Costo por ticket: 1 DP o 1 Estela o 5,000 de oro
+                  </p>
+                </div>
+              </div>
+
+              {raffleMessage && (
+                <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-5 py-4 text-emerald-300 font-bold text-xs uppercase tracking-widest">
+                  {raffleMessage}
+                </div>
+              )}
+              {raffleError && (
+                <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 px-5 py-4 text-rose-300 font-bold text-xs uppercase tracking-widest">
+                  {raffleError}
+                </div>
+              )}
+
+              {user && (
+                <div className="rounded-2xl border border-yellow-500/30 bg-yellow-500/10 px-5 py-4 space-y-2">
+                  <p className="text-[10px] text-yellow-300 font-black uppercase tracking-widest">
+                    Pago con oro desde la página
+                  </p>
+                  <p className="text-xs text-yellow-100/90 font-semibold">
+                    Si eliges moneda Oro para tickets, se descuenta directamente del personaje que selecciones aquí.
+                  </p>
+                  <select
+                    value={raffleGoldCharacterGuid}
+                    onChange={(e) => setRaffleGoldCharacterGuid(e.target.value)}
+                    className="w-full max-w-xl bg-black/60 border border-yellow-500/30 rounded-xl px-4 py-3 text-white font-black"
+                  >
+                    <option value="">-- Selecciona personaje para pagar con oro --</option>
+                    {characters.map((c) => (
+                      <option key={c.guid} value={c.guid}>{c.name} (nivel {c.level || '?'})</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {raffleLoading ? (
+                <div className="flex items-center justify-center py-16">
+                  <div className="w-10 h-10 rounded-full border-2 border-pink-500 border-t-transparent animate-spin" />
+                </div>
+              ) : raffles.length === 0 ? (
+                <div className="rounded-[2rem] border border-white/10 bg-black/40 p-10 text-center text-gray-400 font-bold uppercase tracking-[0.18em] text-xs">
+                  No hay sorteos disponibles por ahora.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {raffles.map((raffle) => {
+                    const selectedCurrency = ticketCurrencyByRaffle[raffle.id] || 'dp';
+                    const selectedQty = Number(ticketQtyByRaffle[raffle.id] || 1);
+                    const unit = selectedCurrency === 'dp'
+                      ? raffle.ticketCosts.dp
+                      : selectedCurrency === 'vp'
+                        ? raffle.ticketCosts.vp
+                        : raffle.ticketCosts.gold;
+
+                    const costLabel = selectedCurrency === 'gold'
+                      ? `${(unit * selectedQty).toLocaleString()} oro`
+                      : `${unit * selectedQty} ${selectedCurrency.toUpperCase()}`;
+
+                    const canBuy = raffle.status === 'active' && raffle.remainingForMe > 0;
+                    const isEnded = Date.now() >= new Date(raffle.endsAt).getTime();
+                    const isFinalized = raffle.status === 'drawn' || raffle.status === 'closed' || isEnded;
+
+                    return (
+                      <div
+                        key={raffle.id}
+                        className={`relative overflow-hidden rounded-[2rem] border p-6 space-y-5 backdrop-blur-md ${
+                          isFinalized
+                            ? 'border-gray-500/35 bg-gray-900/45'
+                            : 'border-pink-500/20 bg-black/35'
+                        }`}
+                      >
+                        <div className="absolute -right-16 -top-20 w-52 h-52 rounded-full bg-pink-500/10 blur-3xl" />
+
+                        <div className="relative z-10 flex items-start justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            <h3 className="text-2xl font-black uppercase tracking-tight text-white">{raffle.title}</h3>
+                            <p className="text-xs text-pink-300 font-bold uppercase tracking-widest mt-1 flex items-center gap-2">
+                              <Crown className="w-3.5 h-3.5" /> Premio: {raffle.prizeText}
+                            </p>
+                            {raffle.prizeItemId ? (
+                              <p className="text-[10px] text-cyan-300 font-black uppercase tracking-widest mt-1">
+                                ID premio: {raffle.prizeItemId}
+                              </p>
+                            ) : null}
+                          </div>
+                          <div className="flex flex-col items-end gap-2 shrink-0">
+                            <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
+                              raffle.status === 'active'
+                                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                : raffle.status === 'drawn'
+                                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
+                                  : 'bg-gray-500/20 text-gray-300 border border-gray-500/30'
+                            }`}>
+                              {raffle.status}
+                            </span>
+
+                            {raffle.prizeItem ? (
+                              <div className="relative" onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
+                                <a
+                                  href={raffle.prizeItem.itemUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  data-wowhead={`item=${raffle.prizeItem.itemId}&domain=wotlk`}
+                                  className={`block w-12 h-12 rounded-sm overflow-hidden border bg-black/70 shadow-[0_0_12px_rgba(34,211,238,0.25)] ${getWowItemBorderClass(raffle.prizeItem.qualityId)}`}
+                                  title={`Item #${raffle.prizeItem.itemId}`}
+                                >
+                                  <Image
+                                    src={raffle.prizeItem.iconUrl}
+                                    alt={`Item ${raffle.prizeItem.itemId}`}
+                                    width={48}
+                                    height={48}
+                                    unoptimized
+                                    className="w-full h-full object-cover"
+                                  />
+                                </a>
+                              </div>
+                            ) : (
+                              <div className="rounded-xl border border-gray-500/30 bg-black/50 w-[56px] h-[56px] flex items-center justify-center text-[9px] text-gray-400 font-black uppercase">
+                                Sin ID
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {raffle.description && (
+                          <p className="text-sm text-gray-300 leading-relaxed">{raffle.description}</p>
+                        )}
+
+                        <div className="grid grid-cols-2 gap-3 text-xs">
+                          <div className="rounded-xl border border-white/10 bg-black/35 p-3">
+                            <p className="text-gray-400 uppercase tracking-widest font-black">Tus tickets</p>
+                            <p className="text-xl font-black text-pink-300">{raffle.myTickets}</p>
+                            <p className="text-[10px] font-black text-pink-200/80 uppercase tracking-widest mt-1">
+                              Comprados: {raffle.myTickets}/{raffle.maxTicketsPerAccount}
+                            </p>
+                          </div>
+                          <div className="rounded-xl border border-white/10 bg-black/35 p-3">
+                            <p className="text-gray-400 uppercase tracking-widest font-black">Total tickets</p>
+                            <p className="text-xl font-black text-cyan-300">{raffle.totalTickets}</p>
+                          </div>
+                        </div>
+
+                        <div className="rounded-xl border border-white/10 bg-black/35 p-3 space-y-2">
+                          <p className="text-[10px] text-gray-400 uppercase tracking-widest font-black flex items-center gap-2">
+                            <Timer className="w-3.5 h-3.5 text-pink-400" /> Cierra
+                          </p>
+                          <p className="font-black text-white">{new Date(raffle.endsAt).toLocaleString()}</p>
+                          {isEnded && raffle.status !== 'drawn' && (
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-amber-300">El tiempo terminó, esperando sorteo.</p>
+                          )}
+                        </div>
+
+                        {canBuy && user ? (
+                          <div className="space-y-3 border-t border-white/10 pt-4">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                              <input
+                                type="number"
+                                min={1}
+                                max={raffle.remainingForMe}
+                                value={ticketQtyByRaffle[raffle.id] || 1}
+                                onChange={(e) => setTicketQtyByRaffle((prev) => ({
+                                  ...prev,
+                                  [raffle.id]: Math.max(1, Math.min(raffle.remainingForMe, Number(e.target.value) || 1)),
+                                }))}
+                                className="bg-black/60 border border-pink-500/30 rounded-xl px-4 py-3 text-white font-black focus:outline-none focus:border-pink-400"
+                              />
+
+                              <select
+                                value={selectedCurrency}
+                                onChange={(e) => setTicketCurrencyByRaffle((prev) => ({
+                                  ...prev,
+                                  [raffle.id]: e.target.value as 'dp' | 'vp' | 'gold',
+                                }))}
+                                className="bg-black/60 border border-pink-500/30 rounded-xl px-4 py-3 text-white font-black focus:outline-none focus:border-pink-400"
+                              >
+                                <option value="dp">DP</option>
+                                <option value="vp">Estelas</option>
+                                <option value="gold">Oro</option>
+                              </select>
+
+                              <button
+                                onClick={() => handleBuyTickets(raffle.id)}
+                                disabled={buyingRaffleId === raffle.id}
+                                className={`rounded-xl px-4 py-3 font-black uppercase tracking-widest text-[11px] transition-all ${
+                                  buyingRaffleId === raffle.id
+                                    ? 'bg-pink-900/40 border border-pink-700/30 text-pink-300 cursor-not-allowed'
+                                    : 'bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white shadow-[0_0_20px_rgba(236,72,153,0.35)]'
+                                }`}
+                              >
+                                {buyingRaffleId === raffle.id ? 'Comprando...' : 'Comprar tickets'}
+                              </button>
+                            </div>
+
+                            <select
+                              value={raffleGoldCharacterGuid}
+                              onChange={(e) => setRaffleGoldCharacterGuid(e.target.value)}
+                              className="w-full bg-black/60 border border-pink-500/30 rounded-xl px-4 py-3 text-white font-black"
+                            >
+                              <option value="">-- Personaje destino del premio --</option>
+                              {characters.map((c) => (
+                                <option key={c.guid} value={c.guid}>{c.name} (nivel {c.level || '?'})</option>
+                              ))}
+                            </select>
+
+                            <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-widest text-gray-300">
+                              <span className="flex items-center gap-2"><Target className="w-3.5 h-3.5 text-cyan-400" /> Restantes: {raffle.remainingForMe}</span>
+                              <span>Costo: {costLabel}</span>
+                            </div>
+
+                            {selectedCurrency === 'gold' && (
+                              <p className="text-[10px] text-amber-300 font-bold uppercase tracking-widest">
+                                Para pagar con oro, selecciona el personaje arriba en "Pago con oro desde la pagina".
+                              </p>
+                            )}
+                          </div>
+                        ) : (
+                          <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">
+                            {user ? 'No puedes comprar más tickets en este sorteo.' : 'Inicia sesión para comprar tickets.'}
+                          </p>
+                        )}
+
+                        {raffle.status === 'drawn' && raffle.winnerAccountId && (
+                          <div className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 p-3 text-xs font-black uppercase tracking-widest text-cyan-300">
+                            Ganador: Cuenta #{raffle.winnerAccountId}
+                            {raffle.winnerNote ? <span className="block mt-1 text-[10px] text-cyan-200">{raffle.winnerNote}</span> : null}
+                          </div>
+                        )}
+
+                        {raffle.status === 'closed' && !raffle.winnerAccountId && (
+                          <div className="rounded-xl border border-gray-500/30 bg-gray-500/10 p-3 text-xs font-black uppercase tracking-widest text-gray-300">
+                            Sorteo cerrado sin ganador
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {gmLevel >= 3 && user && (
+                <div className="rounded-[2rem] border border-amber-500/30 bg-black/50 p-6 space-y-6">
+                  <h3 className="text-lg font-black uppercase tracking-widest text-amber-300">Panel GM - Sorteos</h3>
+
+                  <form onSubmit={handleCreateRaffle} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <input
+                      value={adminRaffleForm.title}
+                      onChange={(e) => setAdminRaffleForm((p) => ({ ...p, title: e.target.value }))}
+                      placeholder="Nombre del sorteo"
+                      required
+                      className="bg-black/60 border border-amber-500/30 rounded-xl px-4 py-3 text-white"
+                    />
+                    <input
+                      value={adminRaffleForm.prizeText}
+                      onChange={(e) => setAdminRaffleForm((p) => ({ ...p, prizeText: e.target.value }))}
+                      placeholder="Premio"
+                      required
+                      className="bg-black/60 border border-amber-500/30 rounded-xl px-4 py-3 text-white"
+                    />
+                    <input
+                      value={adminRaffleForm.prizeItemId}
+                      onChange={(e) => setAdminRaffleForm((p) => ({ ...p, prizeItemId: e.target.value.replace(/[^0-9]/g, '') }))}
+                      placeholder="ID del item/premio (opcional)"
+                      className="bg-black/60 border border-amber-500/30 rounded-xl px-4 py-3 text-white"
+                    />
+                    <input
+                      value={adminRaffleForm.description}
+                      onChange={(e) => setAdminRaffleForm((p) => ({ ...p, description: e.target.value }))}
+                      placeholder="Descripción"
+                      className="md:col-span-2 bg-black/60 border border-amber-500/30 rounded-xl px-4 py-3 text-white"
+                    />
+                    <input
+                      type="datetime-local"
+                      value={adminRaffleForm.startsAt}
+                      onChange={(e) => setAdminRaffleForm((p) => ({ ...p, startsAt: e.target.value }))}
+                      required
+                      className="bg-black/60 border border-amber-500/30 rounded-xl px-4 py-3 text-white"
+                    />
+                    <input
+                      type="datetime-local"
+                      value={adminRaffleForm.endsAt}
+                      onChange={(e) => setAdminRaffleForm((p) => ({ ...p, endsAt: e.target.value }))}
+                      required
+                      className="bg-black/60 border border-amber-500/30 rounded-xl px-4 py-3 text-white"
+                    />
+                    <select
+                      value={adminRaffleForm.status}
+                      onChange={(e) => setAdminRaffleForm((p) => ({ ...p, status: e.target.value as 'draft' | 'active' | 'closed' }))}
+                      className="bg-black/60 border border-amber-500/30 rounded-xl px-4 py-3 text-white"
+                    >
+                      <option value="draft">Draft</option>
+                      <option value="active">Active</option>
+                      <option value="closed">Closed</option>
+                    </select>
+                    <button
+                      type="submit"
+                      disabled={savingRaffleAdmin}
+                      className="bg-gradient-to-r from-amber-600 to-orange-600 text-black font-black uppercase tracking-widest rounded-xl px-4 py-3 disabled:opacity-60"
+                    >
+                      {savingRaffleAdmin ? 'Guardando...' : 'Crear sorteo'}
+                    </button>
+                  </form>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {raffles.map((raffle) => (
+                      <div key={`gm-${raffle.id}`} className="rounded-xl border border-white/10 bg-black/40 p-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <p className="font-black text-sm text-white uppercase tracking-wide">{raffle.title}</p>
+                          <span className="text-[10px] text-gray-400 font-black uppercase">{raffle.status}</span>
+                        </div>
+                        <div className="text-[10px] text-gray-400 uppercase tracking-widest">Tickets: {raffle.totalTickets}</div>
+                        <div className="flex flex-wrap gap-2">
+                          <button onClick={() => handleRaffleStatusUpdate(raffle.id, 'draft')} className="px-3 py-2 rounded-lg border border-white/20 text-xs font-black text-gray-200">Draft</button>
+                          <button onClick={() => handleRaffleStatusUpdate(raffle.id, 'active')} className="px-3 py-2 rounded-lg border border-emerald-500/40 text-xs font-black text-emerald-300">Activar</button>
+                          <button onClick={() => handleRaffleStatusUpdate(raffle.id, 'closed')} className="px-3 py-2 rounded-lg border border-amber-500/40 text-xs font-black text-amber-300">Cerrar</button>
+                          <button onClick={() => handleDrawRaffle(raffle.id)} className="px-3 py-2 rounded-lg border border-pink-500/40 text-xs font-black text-pink-300">Sortear</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </motion.section>
           )}
 
@@ -912,14 +1483,14 @@ export default function DonatePage() {
             <div className="mt-6 bg-black/40 p-8 rounded-3xl border border-white/5 backdrop-blur-md shadow-inner">
                {isCustomMode ? (
                  <div className="space-y-4">
-                    <label className="text-[10px] text-purple-300 font-black uppercase tracking-[0.3em]">Ingresa Monto en USD</label>
+                    <label className="text-[10px] text-purple-300 font-black uppercase tracking-[0.16em] sm:tracking-[0.3em]">Ingresa Monto en USD</label>
                     <div className="relative">
                        <span className="absolute left-6 top-1/2 -translate-y-1/2 text-3xl font-black text-purple-500/50">$</span>
                        <input 
                          type="number" 
                          value={customAmount} 
                          onChange={e=>setCustomAmount(e.target.value)} 
-                         className="w-full bg-black/60 border-2 border-purple-500/30 rounded-2xl py-6 px-12 text-4xl font-black text-white focus:border-purple-500 transition-all text-center" 
+                         className="w-full bg-black/60 border-2 border-purple-500/30 rounded-2xl py-5 sm:py-6 px-10 sm:px-12 text-3xl sm:text-4xl font-black text-white focus:border-purple-500 transition-all text-center" 
                          placeholder="0"
                        />
                     </div>
@@ -1013,7 +1584,7 @@ export default function DonatePage() {
 
             <button 
               onClick={handlePaymentSuccessClose}
-              className={`w-full py-5 rounded-2xl font-black uppercase tracking-[0.3em] text-xs transition-all shadow-xl active:scale-95 ${
+              className={`w-full py-5 rounded-2xl font-black uppercase tracking-[0.16em] sm:tracking-[0.3em] text-xs transition-all shadow-xl active:scale-95 ${
                 paymentResult.success 
                 ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-500/40' 
                 : 'bg-rose-600 hover:bg-rose-500 text-white shadow-rose-500/40'
