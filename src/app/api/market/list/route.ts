@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { authPool, pool as charPool } from '@/lib/db';
 import { executeSoapCommand } from '@/lib/soap';
 
+const MARKET_HOLD_ACCOUNT_ID = 1;
+
 // Mapeos básicos para el snapshot
 const RACE_MAP: Record<number, string> = { 1: 'Humano', 2: 'Orco', 3: 'Enano', 4: 'Elfo de la Noche', 5: 'No-Muerto', 6: 'Tauren', 7: 'Gnomo', 8: 'Trol', 10: 'Elfo de Sangre', 11: 'Draenei' };
 const CLASS_MAP: Record<number, string> = { 1: 'Guerrero', 2: 'Paladín', 3: 'Cazador', 4: 'Pícaro', 5: 'Sacerdote', 6: 'Caballero de la Muerte', 7: 'Chamán', 8: 'Mago', 9: 'Brujo', 11: 'Druida' };
@@ -103,11 +105,11 @@ export async function POST(req: Request) {
         [sellerAccountId, guid, snapshotJson, priceDp]
       );
 
-      // 4. Renombrar cuenta atómicamente a 999999 (Market Hold Account)
+      // 4. Mover personaje a la cuenta hold del marketplace
       // Esta actualización se hace directo en acore_characters/characters
       const [updateResult]: any = await charPool.query(
-        'UPDATE characters SET account = 999999 WHERE guid = ? AND account = ?',
-        [guid, sellerAccountId]
+        'UPDATE characters SET account = ? WHERE guid = ? AND account = ?',
+        [MARKET_HOLD_ACCOUNT_ID, guid, sellerAccountId]
       );
 
       if (updateResult.affectedRows === 0) {

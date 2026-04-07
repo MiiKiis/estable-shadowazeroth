@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
 import { ResultSetHeader, RowDataPacket } from 'mysql2';
-import { authPool } from '@/lib/db';
+import { authPool, pool } from '@/lib/db';
 import { readAvatarMap } from '@/lib/avatarStore';
 import { getAccountAccessSchema, getGMLevel } from '@/lib/gmLevel';
 
 type GmRow = RowDataPacket & { gmlevel: number | null };
 type AccountRow = RowDataPacket & { id: number };
+type CharacterRow = RowDataPacket & { guid: number };
 type TopicRow = RowDataPacket & {
   id: number;
   title: string;
@@ -130,6 +131,17 @@ async function runMigrations(): Promise<void> {
       );
     }
 
+    // 5.1 Columna `author_character` para mostrar PJ en lugar de cuenta
+    const [authorCharacterRows]: any = await authPool.query(
+      `SELECT 1 AS ok FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'forum_topics' AND COLUMN_NAME = 'author_character' LIMIT 1`
+    );
+    if (!authorCharacterRows?.length) {
+      await authPool.query(
+        'ALTER TABLE forum_topics ADD COLUMN author_character VARCHAR(32) NULL DEFAULT NULL AFTER author_id'
+      );
+    }
+
     // 6. Índices de performance en forum_topics
     try {
       await authPool.query('ALTER TABLE forum_topics ADD INDEX idx_category (category)');
@@ -185,7 +197,7 @@ export async function GET(request: Request) {
          t.views,
          t.created_at,
          COALESCE(t.updated_at, t.created_at) AS updated_at,
-         COALESCE(a.username, '[Deleted]') AS author_username,
+         COALESCE(NULLIF(t.author_character, ''), COALESCE(a.username, '[Deleted]')) AS author_username,
          t.author_id                       AS author_id,
          MAX(aa.\`${schema.gmCol}\`)                   AS gmlevel,
          COALESCE(fc_agg.comment_count, 0) AS comment_count,
@@ -246,6 +258,7 @@ export async function POST(request: Request) {
     const title    = String(body?.title || '').trim();
     const category = String(body?.category || 'general');
     const comment  = String(body?.comment || '').trim();
+    const characterName = String(body?.characterName || '').trim();
     const pinned   = body?.pinned ? 1 : 0;
 
     const [sections] = await authPool.query<RowDataPacket[]>('SELECT id FROM forum_sections');
@@ -256,9 +269,16 @@ export async function POST(request: Request) {
     if (title.length > 200)           return NextResponse.json({ error: 'El título no puede exceder 200 caracteres' }, { status: 400 });
     if (validCategories.length > 0 && !validCategories.includes(category)) return NextResponse.json({ error: 'Categoría inválida' }, { status: 400 });
     if (!comment || comment.length < 10) return NextResponse.json({ error: 'El mensaje debe tener al menos 10 caracteres' }, { status: 400 });
+    if (!characterName) return NextResponse.json({ error: 'Debes seleccionar un personaje para publicar' }, { status: 400 });
 
     const [accountRows] = await authPool.query<AccountRow[]>('SELECT id FROM account WHERE id = ? LIMIT 1', [userId]);
     if (!accountRows.length) return NextResponse.json({ error: 'Cuenta no encontrada' }, { status: 404 });
+
+    const [characterRows] = await pool.query<CharacterRow[]>(
+      'SELECT guid FROM characters WHERE account = ? AND name = ? LIMIT 1',
+      [userId, characterName]
+    );
+    if (!characterRows.length) return NextResponse.json({ error: 'El personaje seleccionado no pertenece a tu cuenta' }, { status: 403 });
 
     if (category === 'announcements') {
       const gm = await isGM(userId);
@@ -271,8 +291,8 @@ export async function POST(request: Request) {
     try {
       await conn.beginTransaction();
       const [topicResult] = await conn.query<ResultSetHeader>(
-        'INSERT INTO forum_topics (title, category, author_id, pinned) VALUES (?, ?, ?, ?)',
-        [title, category, userId, pinned]
+        'INSERT INTO forum_topics (title, category, author_id, author_character, pinned) VALUES (?, ?, ?, ?, ?)',
+        [title, category, userId, characterName, pinned]
       );
       const topicId = topicResult.insertId;
       await conn.query(

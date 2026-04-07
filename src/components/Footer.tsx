@@ -22,13 +22,13 @@ export default function Footer() {
   ];
 
   return (
-    <footer className="relative bg-[#050505] border-t border-[#d4af37]/10 pt-20 pb-10 z-10 px-6 mt-20">
+    <footer className="relative bg-[#050505] border-t border-[#d4af37]/10 pt-14 sm:pt-20 pb-10 z-10 px-4 sm:px-6 mt-16 sm:mt-20">
       {/* Background gradient */}
       <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0a] to-transparent opacity-50" />
       <div className="relative">
         <div className="max-w-7xl mx-auto">
           {/* Main Content Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-12 mb-16">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-10 sm:gap-12 mb-12 sm:mb-16">
             {/* Left: Branding */}
             <div className="space-y-6 text-center md:text-left">
               <div className="flex items-center justify-center md:justify-start gap-3">
@@ -49,7 +49,7 @@ export default function Footer() {
                   <p className="text-[#8b2e35] text-xs font-black uppercase tracking-wider">WotLK 3.3.5a</p>
                 </div>
               </div>
-              <p className="text-gray-500 text-sm leading-relaxed max-w-xs">
+              <p className="text-gray-500 text-sm leading-relaxed max-w-xs mx-auto md:mx-0">
                 La experiencia definitiva de World of Warcraft. Únete a la Horda o a la alianza y escribe tu leyenda en Rasganorte.
               </p>
             </div>
@@ -59,7 +59,7 @@ export default function Footer() {
               <h4 className="font-black text-xs uppercase tracking-[0.3em] text-[#d4af37] text-glow">
                 Navegación Rápida
               </h4>
-              <nav className="grid grid-cols-2 gap-x-12 gap-y-3">
+              <nav className="grid grid-cols-2 gap-x-8 sm:gap-x-12 gap-y-3">
                 {footerLinks.map((link) => (
                   <Link
                     key={link.name}
@@ -83,13 +83,13 @@ export default function Footer() {
                 href="https://discord.gg/FfPcExmrZW" 
                 target="_blank" 
                 rel="noopener noreferrer"
-                className="group relative flex items-center gap-4 p-5 rounded-2xl bg-[#5865F2]/10 border border-[#5865F2]/20 hover:border-[#5865F2]/50 transition-all duration-300 overflow-hidden"
+                className="group relative flex items-center gap-3 sm:gap-4 p-4 sm:p-5 rounded-2xl bg-[#5865F2]/10 border border-[#5865F2]/20 hover:border-[#5865F2]/50 transition-all duration-300 overflow-hidden"
               >
                 {/* Pulse Glow */}
                 <div className="absolute inset-0 bg-[#5865F2]/5 animate-pulse group-hover:bg-[#5865F2]/10 transition-colors" />
                 
-                <div className="relative w-14 h-14 shrink-0 bg-[#2c2f33] rounded-xl flex items-center justify-center p-2 shadow-lg group-hover:scale-110 transition-transform duration-300">
-                  <Image src="/discord.png" alt="Discord" width={44} height={44} />
+                <div className="relative w-12 h-12 sm:w-14 sm:h-14 shrink-0 bg-[#2c2f33] rounded-xl flex items-center justify-center p-2 shadow-lg group-hover:scale-110 transition-transform duration-300">
+                  <Image src="/discord.png" alt="Discord" width={40} height={40} />
                 </div>
                 
                 <div className="relative">
@@ -103,16 +103,16 @@ export default function Footer() {
               </a>
 
               {/* Other social icons bar */}
-              <div className="flex justify-center md:justify-start items-center gap-4">
+              <div className="flex justify-center md:justify-start items-center gap-3 sm:gap-4">
                 {socialLinks.map((link) => (
                   <a
                     key={link.name}
                     href={link.href}
-                    className={`w-14 h-14 p-2 rounded-xl border border-white/10 bg-white/5 flex items-center justify-center transition-all hover:scale-110 duration-300 shadow-xl ${link.color}`}
+                    className={`w-12 h-12 sm:w-14 sm:h-14 p-2 rounded-xl border border-white/10 bg-white/5 flex items-center justify-center transition-all hover:scale-110 duration-300 shadow-xl ${link.color}`}
                     aria-label={link.name}
                     title={link.name}
                   >
-                    <Image src={link.icon} alt={link.name} width={36} height={36} className="group-hover:opacity-100 transition-opacity" />
+                    <Image src={link.icon} alt={link.name} width={32} height={32} className="group-hover:opacity-100 transition-opacity" />
                   </a>
                 ))}
               </div>
@@ -120,7 +120,7 @@ export default function Footer() {
           </div>
 
           {/* Divider */}
-          <div className="border-t border-[#d4af37]/10 my-12" />
+          <div className="border-t border-[#d4af37]/10 my-10 sm:my-12" />
 
           {/* Bottom Info */}
           <div className="flex flex-col md:flex-row justify-between items-center gap-6 text-center md:text-left">

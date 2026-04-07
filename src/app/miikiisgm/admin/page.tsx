@@ -24,6 +24,7 @@ import DarDpAdminForm from './DarDpAdminForm';
 import AdminForum from './AdminForum';
 import AdminCategories from './AdminCategories';
 import AdminForumSections from './AdminForumSections';
+import AdminR1Requests from './AdminR1Requests';
 import { Tag } from 'lucide-react';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
@@ -141,7 +142,7 @@ function getStoredUser(): { id?: number; username?: string } | null {
 }
 
 // ── Page ──────────────────────────────────────────────────────────────────────
-type AdminTab = 'shop' | 'categories' | 'news' | 'addons' | 'qr' | 'dar_dp' | 'forum' | 'forum_sections';
+type AdminTab = 'shop' | 'categories' | 'news' | 'addons' | 'qr' | 'dar_dp' | 'forum' | 'forum_sections' | 'r1_requests';
 
 export default function AdminShopPage() {
   const router = useRouter();
@@ -165,11 +166,75 @@ export default function AdminShopPage() {
   const [newItem, setNewItem] = useState<NewItemForm>(EMPTY_ITEM);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [imagePreviewFailed, setImagePreviewFailed] = useState(false);
 
   // tabs
   const [activeTab, setActiveTab] = useState<AdminTab>('shop');
   const [myGmLevel, setMyGmLevel] = useState<number>(0);
   const [categories, setCategories] = useState<{ id: number; slug: string; name: string; parent_id?: number | null }[]>([]);
+
+  const normalizeCategoryParent = (parentId: number | null | undefined): number | null => {
+    const parsed = Number(parentId);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  };
+
+  const orderedCategories = [...categories].sort((a, b) => Number(a.id) - Number(b.id));
+  const categoryById = new Map(orderedCategories.map(c => [Number(c.id), c]));
+
+  const getCategoryPath = (node: { id: number; slug: string; name: string; parent_id?: number | null }): { label: string; depth: number } => {
+    const parts: string[] = [node.name];
+    const seen = new Set<number>([Number(node.id)]);
+    let depth = 0;
+    let parentId = normalizeCategoryParent(node.parent_id);
+
+    while (parentId !== null) {
+      if (seen.has(parentId)) break;
+      seen.add(parentId);
+      const parent = categoryById.get(parentId);
+      if (!parent) break;
+      parts.unshift(parent.name);
+      depth += 1;
+      parentId = normalizeCategoryParent(parent.parent_id);
+    }
+
+    return { label: parts.join(' / '), depth };
+  };
+
+  const categoryOptions = orderedCategories.map((cat) => {
+    const path = getCategoryPath(cat);
+    return {
+      id: cat.id,
+      slug: cat.slug,
+      depth: path.depth,
+      label: path.label,
+    };
+  });
+
+  const normalizedImageInput = String(newItem.image || '').trim() || 'inv_misc_questionmark';
+  const resolvedPreviewImage = (() => {
+    if (/^https?:\/\//i.test(normalizedImageInput)) return normalizedImageInput;
+    if (normalizedImageInput.startsWith('/')) return normalizedImageInput;
+
+    const lowered = normalizedImageInput.toLowerCase();
+    if (/^(inv_|ability_|spell_|achievement_|trade_|misc_)/.test(lowered)) {
+      return `https://wow.zamimg.com/images/wow/icons/large/${lowered}.jpg`;
+    }
+    return `/items/${normalizedImageInput}`;
+  })();
+
+  const imageInputType = /^https?:\/\//i.test(normalizedImageInput)
+    ? 'URL externa'
+    : normalizedImageInput.startsWith('/')
+      ? 'Ruta absoluta'
+      : /^(inv_|ability_|spell_|achievement_|trade_|misc_)/.test(normalizedImageInput.toLowerCase())
+        ? 'Icono WoW'
+        : 'Archivo local';
+
+  useEffect(() => {
+    setImagePreviewFailed(false);
+  }, [newItem.image]);
+
+  const selectedCategoryPath = categoryOptions.find(opt => opt.slug === newItem.category)?.label || '';
 
   // ── Fetch shop items ─────────────────────────────────────────────────────
   const fetchItems = async () => {
@@ -565,6 +630,9 @@ export default function AdminShopPage() {
       { id: 'dar_dp' as AdminTab, label: 'Puntos y Estelas',  icon: <Coins className="w-4 h-4" /> },
       { id: 'forum_sections' as AdminTab, label: 'Secciones Foro', icon: <MessageSquare className="w-4 h-4" /> },
     ] : []),
+    ...(myGmLevel >= 1 ? [
+      { id: 'r1_requests' as AdminTab, label: 'Solicitudes R1', icon: <ShieldCheck className="w-4 h-4" /> },
+    ] : []),
     { id: 'forum' as AdminTab, label: 'Post Foro', icon: <MessageSquare className="w-4 h-4" /> }
   ];
 
@@ -610,6 +678,9 @@ export default function AdminShopPage() {
 
         {/* ── FORUM SECTIONS TAB ─────────────────────────────────────────────────────── */}
         {activeTab === 'forum_sections' && <AdminForumSections />}
+
+        {/* ── GM R1 REQUESTS TAB ─────────────────────────────────────────────────────── */}
+        {activeTab === 'r1_requests' && <AdminR1Requests />}
 
         {/* ── CATEGORIES TAB ─────────────────────────────────────────────────────── */}
         {activeTab === 'categories' && <AdminCategories />}
@@ -659,14 +730,37 @@ export default function AdminShopPage() {
                     </div>
                     {/* Image */}
                     <div>
-                      <label className="block text-xs text-gray-400 mb-1 font-semibold uppercase tracking-wider">Nombre del Icono (opcional)</label>
+                      <label className="block text-xs text-gray-400 mb-1 font-semibold uppercase tracking-wider">Icono o URL de Imagen (opcional)</label>
                       <input
                         type="text"
-                        placeholder="Ej: inv_sword_01"
+                        placeholder="Ej: inv_sword_01 o https://cdn.tusitio.com/imagen.webp"
                         value={newItem.image}
-                        onChange={e => setNewItem(p => ({ ...p, image: e.target.value }))}
+                        onChange={e => {
+                          setImagePreviewFailed(false);
+                          setNewItem(p => ({ ...p, image: e.target.value }));
+                        }}
                         className="w-full bg-black/50 border border-purple-500/30 rounded-xl px-5 py-3.5 text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-400/60 transition-all text-sm"
                       />
+
+                      <div className="mt-3 rounded-xl border border-cyan-500/25 bg-cyan-950/20 p-3 flex items-center gap-3">
+                        <div className="w-16 h-16 rounded-lg overflow-hidden border border-white/10 bg-black/40 flex items-center justify-center shrink-0">
+                          {imagePreviewFailed ? (
+                            <Package className="w-7 h-7 text-gray-500" />
+                          ) : (
+                            <img
+                              src={resolvedPreviewImage}
+                              alt="Preview"
+                              className="w-full h-full object-cover"
+                              onError={() => setImagePreviewFailed(true)}
+                            />
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-[10px] uppercase tracking-wider font-black text-cyan-300">Vista previa de imagen</p>
+                          <p className="text-[11px] text-cyan-100/90 font-semibold">Tipo: {imageInputType}</p>
+                          <p className="text-[10px] text-gray-400 font-mono truncate">{resolvedPreviewImage}</p>
+                        </div>
+                      </div>
                     </div>
                   </div>
 
@@ -722,23 +816,26 @@ export default function AdminShopPage() {
                         onChange={e => setNewItem(p => ({ ...p, category: e.target.value }))}
                         className="w-full bg-[#0a0a1a] border border-purple-500/30 rounded-xl px-5 py-3.5 text-white focus:outline-none focus:ring-2 focus:ring-cyan-400/60 transition-all text-sm cursor-pointer"
                       >
-                        {/* Secciones Principales y sus subsecciones indented */}
-                        {categories.filter(c => !c.parent_id || Number(c.parent_id) === 0).map(main => (
-                          <React.Fragment key={main.id}>
-                            <option value={main.slug} style={{ backgroundColor: '#0a0a1a', color: '#00f2ff', fontWeight: 'bold' }}>
-                              {main.name}
-                            </option>
-                            {categories.filter(sub => sub.parent_id !== null && Number(sub.parent_id) === main.id).map(sub => (
-                              <option key={sub.id} value={sub.slug} style={{ backgroundColor: '#0a0a1a', color: '#e5e7eb' }}>
-                                &nbsp;&nbsp;» {sub.name}
-                              </option>
-                            ))}
-                          </React.Fragment>
+                        <option value="" className="bg-[#0a0a1a] text-gray-300">-- Seleccionar categoría/subcategoría --</option>
+                        {categoryOptions.map(opt => (
+                          <option
+                            key={opt.id}
+                            value={opt.slug}
+                            style={{ backgroundColor: '#0a0a1a', color: opt.depth === 0 ? '#00f2ff' : '#e5e7eb', fontWeight: opt.depth === 0 ? 'bold' : 'normal' }}
+                          >
+                            {opt.label}
+                          </option>
                         ))}
                         {categories.length === 0 && (
                           <option value="misc" className="bg-[#0a0a1a] text-white">Otros</option>
                         )}
                       </select>
+                      <div className="mt-2 rounded-lg border border-cyan-500/20 bg-cyan-950/20 px-3 py-2">
+                        <p className="text-[10px] uppercase tracking-wider text-cyan-300/80 font-black">Ruta seleccionada</p>
+                        <p className="text-xs text-cyan-100 font-semibold break-words">
+                          {selectedCategoryPath || 'Sin categoría seleccionada'}
+                        </p>
+                      </div>
                     </div>
                     {/* Quality */}
                     <div>

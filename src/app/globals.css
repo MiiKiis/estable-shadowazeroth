@@ -27,6 +27,14 @@
     background-color: transparent;
   }
 
+  img,
+  video,
+  canvas,
+  svg {
+    max-width: 100%;
+    height: auto;
+  }
+
   /* Scrollbar Styling */
   ::-webkit-scrollbar {
     @apply w-2;
@@ -117,5 +125,11 @@
 
 .animate-estela-pulse {
   animation: estela-border-pulse 2.5s ease-in-out infinite;
+}
+
+@media (max-width: 1024px) {
+  body {
+    background-attachment: scroll;
+  }
 }
 

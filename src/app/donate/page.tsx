@@ -21,7 +21,61 @@ function CatManagerPanel({
   userId: number;
   onRefresh: () => void;
 }) {
-  const mainCats = categories.filter(c => !c.parent_id || Number(c.parent_id) === 0);
+  const normalizeParentId = (parentId: number | null | undefined): number | null => {
+    const parsed = Number(parentId);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  };
+  const orderedCategories = [...categories].sort((a, b) => Number(a.id) - Number(b.id));
+  const rootCategories = orderedCategories.filter(c => normalizeParentId(c.parent_id) === null);
+  const getChildren = (parentId: number) => orderedCategories.filter(c => normalizeParentId(c.parent_id) === Number(parentId));
+
+  const renderParentOptions = (
+    nodes: { id: number; slug: string; name: string; description?: string; image?: string; parent_id?: number | null }[],
+    depth = 0,
+    visited = new Set<number>()
+  ): JSX.Element[] => {
+    const options: JSX.Element[] = [];
+    for (const node of nodes) {
+      if (visited.has(node.id)) continue;
+      visited.add(node.id);
+      const prefix = depth > 0 ? `${'\u00A0\u00A0'.repeat(depth)}↳ ` : '';
+      options.push(<option key={node.id} value={node.id}>{prefix}{node.name}</option>);
+      const children = getChildren(node.id);
+      if (children.length > 0) options.push(...renderParentOptions(children, depth + 1, visited));
+    }
+    return options;
+  };
+
+  const renderTree = (
+    node: { id: number; slug: string; name: string; description?: string; image?: string; parent_id?: number | null },
+    depth = 0,
+    visited = new Set<number>()
+  ): JSX.Element | null => {
+    if (visited.has(node.id)) return null;
+    visited.add(node.id);
+    const children = getChildren(node.id);
+
+    return (
+      <div key={node.id} className="group">
+        <div className={`flex items-center justify-between border border-white/5 rounded-xl px-4 py-2.5 transition-all hover:border-amber-500/20 ${depth === 0 ? 'bg-white/5' : 'bg-white/[0.03]'}`}>
+          <div className="flex items-center gap-2 min-w-0">
+            {depth > 0 ? <span className="text-amber-500/40 text-xs">↳</span> : null}
+            <span className="font-bold text-sm text-white truncate">{node.name}</span>
+            <span className="text-[10px] text-gray-500 font-mono truncate">{node.slug}</span>
+          </div>
+          <button onClick={() => handleDelete(node.id)} className="p-1.5 text-gray-600 hover:text-rose-400 transition-colors opacity-0 group-hover:opacity-100">
+            <span className="text-xs">✕</span>
+          </button>
+        </div>
+        {children.length > 0 ? (
+          <div className="ml-6 mt-1 space-y-1 border-l border-amber-500/10 pl-3">
+            {children.map(child => renderTree(child, depth + 1, visited))}
+          </div>
+        ) : null}
+      </div>
+    );
+  };
+
   const [form, setForm] = React.useState({ slug: '', name: '', description: '', image_url: '', parent_id: '' });
   const [saving, setSaving] = React.useState(false);
   const [msg, setMsg] = React.useState('');
@@ -83,8 +137,14 @@ function CatManagerPanel({
           <select className="w-full bg-black/60 border border-amber-500/20 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-amber-400/50 cursor-pointer"
             value={form.parent_id} onChange={e => setForm({ ...form, parent_id: e.target.value })}>
             <option value="">-- Sección Principal --</option>
-            {mainCats.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            {renderParentOptions(rootCategories)}
           </select>
+        </div>
+        <div className="sm:col-span-2 lg:col-span-2">
+          <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest block mb-1">URL de Imagen (opcional)</label>
+          <input className="w-full bg-black/60 border border-amber-500/20 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-amber-400/50"
+            placeholder="https://tusitio.com/imagen.webp" value={form.image_url}
+            onChange={e => setForm({ ...form, image_url: e.target.value })} />
         </div>
         <div className="sm:col-span-2 lg:col-span-2">
           <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest block mb-1">Descripción</label>
@@ -102,32 +162,7 @@ function CatManagerPanel({
 
       {/* Lista de categorías actuales */}
       <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-        {mainCats.map(cat => (
-          <div key={cat.id} className="group">
-            <div className="flex items-center justify-between bg-white/5 border border-white/5 rounded-xl px-4 py-2.5 hover:border-amber-500/20 transition-all">
-              <div>
-                <span className="font-bold text-sm text-white">{cat.name}</span>
-                <span className="ml-2 text-[10px] text-gray-500 font-mono">{cat.slug}</span>
-              </div>
-              <button onClick={() => handleDelete(cat.id)} className="p-1.5 text-gray-600 hover:text-rose-400 transition-colors opacity-0 group-hover:opacity-100">
-                <span className="text-xs">✕</span>
-              </button>
-            </div>
-            {/* Subcategories */}
-            {categories.filter(s => Number(s.parent_id) === cat.id).map(sub => (
-              <div key={sub.id} className="group/sub ml-6 mt-1 flex items-center justify-between bg-white/[0.03] border border-white/5 rounded-lg px-4 py-2 hover:border-amber-500/10 transition-all">
-                <div className="flex items-center gap-2">
-                  <span className="text-amber-500/40 text-xs">↳</span>
-                  <span className="text-sm text-gray-300 font-semibold">{sub.name}</span>
-                  <span className="text-[10px] text-gray-600 font-mono">{sub.slug}</span>
-                </div>
-                <button onClick={() => handleDelete(sub.id)} className="p-1 text-gray-600 hover:text-rose-400 transition-colors opacity-0 group-hover/sub:opacity-100">
-                  <span className="text-xs">✕</span>
-                </button>
-              </div>
-            ))}
-          </div>
-        ))}
+        {rootCategories.map(cat => renderTree(cat))}
       </div>
     </div>
   );
@@ -253,6 +288,23 @@ type RaffleItem = {
     gold: number;
   };
 };
+
+async function readApiData(res: Response): Promise<any> {
+  const raw = await res.text();
+  if (!raw) return {};
+
+  try {
+    return JSON.parse(raw);
+  } catch {
+    const looksLikeHtml = /^\s*</.test(raw);
+    if (looksLikeHtml) {
+      return {
+        error: `El servidor devolvió HTML en vez de JSON (HTTP ${res.status}). Revisa logs del endpoint.`,
+      };
+    }
+    return { error: raw };
+  }
+}
 
 export default function DonatePage() {
   const router = useRouter();
@@ -426,7 +478,7 @@ export default function DonatePage() {
     try {
       const accountId = user?.id ? `?accountId=${user.id}${gmLevel >= 3 ? '&includeAdmin=1' : ''}` : '';
       const res = await fetch(`/api/raffle${accountId}`, { cache: 'no-store' });
-      const data = await res.json();
+      const data = await readApiData(res);
       if (!res.ok) throw new Error(data.error || 'No se pudieron cargar sorteos');
       setRaffles(Array.isArray(data.raffles) ? data.raffles : []);
     } catch (err: any) {
@@ -476,7 +528,7 @@ export default function DonatePage() {
           characterGuid: Number(raffleGoldCharacterGuid),
         }),
       });
-      const data = await res.json();
+      const data = await readApiData(res);
       if (!res.ok) throw new Error(data.error || 'No se pudo completar la compra de tickets');
       setRaffleMessage(data.message || 'Tickets comprados correctamente.');
       await loadRaffles();
@@ -504,7 +556,7 @@ export default function DonatePage() {
           prizeItemId: adminRaffleForm.prizeItemId ? Number(adminRaffleForm.prizeItemId) : null,
         }),
       });
-      const data = await res.json();
+      const data = await readApiData(res);
       if (!res.ok) throw new Error(data.error || 'No se pudo crear el sorteo');
       setRaffleMessage('Sorteo creado correctamente.');
       setAdminRaffleForm({
@@ -536,7 +588,7 @@ export default function DonatePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: user.id, raffleId, status }),
       });
-      const data = await res.json();
+      const data = await readApiData(res);
       if (!res.ok) throw new Error(data.error || 'No se pudo actualizar el estado');
       setRaffleMessage('Estado del sorteo actualizado.');
       await loadRaffles();
@@ -559,7 +611,7 @@ export default function DonatePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: user.id, raffleId }),
       });
-      const data = await res.json();
+      const data = await readApiData(res);
       if (!res.ok) throw new Error(data.error || 'No se pudo ejecutar el sorteo');
       setRaffleMessage(data.message || `Ganador: cuenta ${data.winnerAccountId}`);
       await loadRaffles();
@@ -636,13 +688,71 @@ export default function DonatePage() {
     }
   };
 
+  const normalizeCategoryParentId = (parentId: number | null | undefined): number | null => {
+    const parsed = Number(parentId);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  };
+
+  const categoryBySlug = new Map(shopCategories.map(c => [c.slug, c]));
+
+  const getChildrenBySlug = (slug: string | null) => {
+    if (!slug) return [] as typeof shopCategories;
+    const current = categoryBySlug.get(slug);
+    if (!current) return [] as typeof shopCategories;
+    return shopCategories.filter(c => normalizeCategoryParentId(c.parent_id) === Number(current.id));
+  };
+
+  const getDescendantSlugs = (slug: string | null): string[] => {
+    if (!slug) return [];
+    const visited = new Set<string>();
+    const stack = [slug];
+    const out: string[] = [];
+
+    while (stack.length > 0) {
+      const currentSlug = stack.pop()!;
+      if (visited.has(currentSlug)) continue;
+      visited.add(currentSlug);
+      out.push(currentSlug);
+
+      const children = getChildrenBySlug(currentSlug);
+      for (const child of children) {
+        if (!visited.has(child.slug)) stack.push(child.slug);
+      }
+    }
+
+    return out;
+  };
+
+  const currentBrowseSlug = subCategoryFilter || shopCategory;
+  const currentBrowseCategory = currentBrowseSlug ? categoryBySlug.get(currentBrowseSlug) : null;
+  const currentChildren = getChildrenBySlug(currentBrowseSlug);
+
+  const handleBackCategory = () => {
+    if (!shopCategory) return;
+    if (!currentBrowseSlug || currentBrowseSlug === shopCategory) {
+      setShopCategory(null);
+      setSubCategoryFilter(null);
+      return;
+    }
+
+    const current = categoryBySlug.get(currentBrowseSlug);
+    const parentId = normalizeCategoryParentId(current?.parent_id);
+    const parentSlug = parentId
+      ? shopCategories.find(c => Number(c.id) === parentId)?.slug || null
+      : null;
+
+    if (!parentSlug || parentSlug === shopCategory) {
+      setSubCategoryFilter(null);
+      return;
+    }
+
+    setSubCategoryFilter(parentSlug);
+  };
+
   const filteredShopItems = shopItems.filter(item => {
     if (!shopCategory) return false;
-    const currentMainCat = shopCategories.find(c => c.slug === shopCategory);
-    const subCategories = shopCategories.filter(c => c.parent_id === currentMainCat?.id);
-    const validSlugs = [shopCategory, ...subCategories.map(s => s.slug)];
+    const validSlugs = getDescendantSlugs(currentBrowseSlug || shopCategory);
     if (!validSlugs.includes(item.category || 'misc')) return false;
-    if (subCategoryFilter && subCategoryFilter !== '__all' && item.category !== subCategoryFilter) return false;
 
     if (shopCategory === 'pve') {
       if (shopTier && item.tier !== shopTier) return false;
@@ -657,23 +767,37 @@ export default function DonatePage() {
     return true;
   });
 
+  const resolveShopImageSrc = (rawImage?: string) => {
+    const value = String(rawImage || '').trim();
+    if (!value) return '/items/default.png';
+    if (/^https?:\/\//i.test(value)) return value;
+    if (value.startsWith('/')) return value;
+
+    const lower = value.toLowerCase();
+    if (/^(inv_|ability_|spell_|achievement_|trade_|misc_)/.test(lower)) {
+      return `https://wow.zamimg.com/images/wow/icons/large/${lower}.jpg`;
+    }
+
+    return `/items/${value}`;
+  };
+
   const CategoryCard = ({ cat, onClick, isSub = false }: { cat: any, onClick: () => void, isSub?: boolean }) => (
     <motion.button
       whileHover={{ scale: 1.02, y: -5 }}
       whileTap={{ scale: 0.98 }}
       onClick={onClick}
-      className={`relative flex flex-col overflow-hidden rounded-3xl border-2 transition-all duration-300 h-[220px] group shadow-2xl ${
+      className={`relative flex flex-col overflow-hidden rounded-3xl border-2 transition-all duration-300 group shadow-2xl ${
         isSub ? 'bg-gradient-to-br from-cyan-900/40 to-[#0d131b] border-cyan-500/20 hover:border-cyan-400' : 'bg-gradient-to-br from-purple-900/40 to-[#0d131b] border-purple-500/20 hover:border-purple-500'
       }`}
     >
-      <div className="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-all z-10" />
+      <div className="absolute inset-0 bg-transparent transition-all z-10" />
       
-      <div className="w-full h-[140px] relative overflow-hidden">
+      <div className="w-full aspect-square relative overflow-hidden bg-[#060b16]">
         {cat.image ? (
           <img 
             src={cat.image} 
             alt={cat.name} 
-            className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-all duration-700 group-hover:scale-110" 
+            className="w-full h-full object-cover object-center opacity-95 group-hover:opacity-100 transition-all duration-500 group-hover:scale-[1.03]" 
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center bg-[#0d131b]">
@@ -682,10 +806,10 @@ export default function DonatePage() {
             </div>
           </div>
         )}
-        <div className="absolute inset-0 bg-gradient-to-t from-[#0d131b] to-transparent z-20" />
+        <div className="absolute inset-0 bg-gradient-to-t from-[#0d131b]/35 via-transparent to-transparent z-20" />
       </div>
 
-      <div className="p-5 flex flex-col justify-between flex-1 relative z-30 bg-black/40 backdrop-blur-sm border-t border-white/5">
+      <div className="p-5 flex flex-col justify-between min-h-[92px] relative z-30 bg-black/40 backdrop-blur-sm border-t border-white/5">
         <h3 className={`text-sm font-black tracking-[0.15em] uppercase text-white truncate group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r ${isSub ? 'from-cyan-400 to-blue-400' : 'from-purple-400 to-indigo-400'}`}>
           {cat.name}
         </h3>
@@ -1271,7 +1395,7 @@ export default function DonatePage() {
                         {shopCategories
                           .filter(cat => !cat.parent_id || Number(cat.parent_id) === 0)
                           .map(cat => (
-                            <CategoryCard key={cat.id} cat={cat} onClick={() => setShopCategory(cat.slug)} />
+                            <CategoryCard key={cat.id} cat={cat} onClick={() => { setShopCategory(cat.slug); setSubCategoryFilter(null); }} />
                           ))
                         }
                         </div>
@@ -1317,7 +1441,7 @@ export default function DonatePage() {
                       >
                         <div className="flex items-center gap-6">
                            <button 
-                             onClick={() => subCategoryFilter ? setSubCategoryFilter(null) : setShopCategory(null)} 
+                             onClick={handleBackCategory}
                              className="group flex items-center gap-3 bg-white/5 hover:bg-white/10 px-6 py-4 rounded-2xl border border-white/5 transition-all active:scale-95"
                            >
                               <ChevronLeft className="w-5 h-5 text-gray-400 group-hover:text-white transition-colors" />
@@ -1326,61 +1450,58 @@ export default function DonatePage() {
                            <div className="h-10 w-[2px] bg-white/10 mx-2" />
                            <div className="flex flex-col">
                               <h3 className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-indigo-400 uppercase italic">
-                                {shopCategories.find(c => c.slug === shopCategory)?.name}
+                                {currentBrowseCategory?.name || shopCategories.find(c => c.slug === shopCategory)?.name}
                               </h3>
-                              {subCategoryFilter && (
+                              {currentBrowseSlug && currentBrowseSlug !== shopCategory && (
                                 <div className="flex items-center gap-2">
                                   <div className="w-8 h-[2px] bg-cyan-500/50" />
                                   <span className="text-cyan-400 font-bold uppercase text-[10px] tracking-widest">
-                                    {shopCategories.find(c => c.slug === subCategoryFilter)?.name}
+                                    Ruta activa: {shopCategories.find(c => c.slug === shopCategory)?.name} / {currentBrowseCategory?.name}
                                   </span>
                                 </div>
                               )}
                            </div>
                         </div>
 
-                        {!subCategoryFilter && shopCategories.some(c => c.parent_id === shopCategories.find(sc => sc.slug === shopCategory)?.id) && (
+                        {currentChildren.length > 0 && (
                           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {shopCategories
-                              .filter(c => c.parent_id === shopCategories.find(sc => sc.slug === shopCategory)?.id)
-                              .map(sub => (
-                                <CategoryCard key={sub.id} cat={sub} isSub={true} onClick={() => setSubCategoryFilter(sub.slug)} />
-                              ))
-                            }
+                            {currentChildren.map(sub => (
+                              <CategoryCard key={sub.id} cat={sub} isSub={true} onClick={() => setSubCategoryFilter(sub.slug)} />
+                            ))}
                           </div>
                         )}
 
-                        {( !shopCategories.some(c => c.parent_id === shopCategories.find(sc => sc.slug === shopCategory)?.id) || subCategoryFilter ) && (
-                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+                        {currentChildren.length === 0 && (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-8">
                             {filteredShopItems.map(item => (
                               <motion.div 
                                 key={item.id} 
                                 initial={{ opacity: 0, scale: 0.9 }}
                                 animate={{ opacity: 1, scale: 1 }}
                                 onMouseLeave={handleMouseLeave} 
-                                className="bg-[#0b0c16]/80 backdrop-blur-md border border-white/5 rounded-[2rem] overflow-hidden group flex flex-col relative h-[380px] hover:border-purple-500/30 hover:shadow-[0_0_30px_rgba(168,85,247,0.15)] transition-all duration-500"
+                                className="bg-[#0b0c16]/85 backdrop-blur-md border border-white/5 rounded-[2rem] overflow-hidden group flex flex-col relative hover:border-purple-500/30 hover:shadow-[0_0_30px_rgba(168,85,247,0.15)] transition-all duration-500"
                               >
                                 <a 
                                   href={`https://www.wowhead.com/item=${item.item_id}&domain=wotlk`} 
                                   data-wowhead={`item=${item.item_id}&domain=wotlk`} 
-                                  className="absolute inset-x-0 top-0 h-1/2 z-10 block opacity-0"
+                                  className="absolute inset-x-0 top-0 h-[65%] z-10 block opacity-0"
                                 >
                                   &nbsp;
                                 </a>
 
-                                <div className="h-[180px] bg-black/40 relative overflow-hidden flex items-center justify-center border-b border-white/5">
+                                <div className="aspect-square w-full bg-black/40 relative overflow-hidden flex items-center justify-center border-b border-white/5">
                                   <Image 
-                                    src={item.image?.startsWith('http') ? item.image : (item.image?.startsWith('/') ? item.image : `/items/${item.image || 'default.png'}`)} 
+                                    src={resolveShopImageSrc(item.image)} 
                                     alt={item.name} 
                                     fill 
-                                    className="object-cover opacity-80 group-hover:opacity-100 group-hover:scale-110 transition-all duration-700" 
+                                    className="object-cover opacity-90 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" 
                                     unoptimized 
                                   />
                                   <div className="absolute inset-0 bg-gradient-to-t from-[#0b0c16] via-transparent to-transparent z-10" />
                                   <div className={`absolute top-4 right-4 z-20 w-3 h-3 rounded-full animate-pulse shadow-[0_0_10px_currentColor] ${item.quality === 'epic' ? 'text-purple-500 bg-purple-500' : 'text-cyan-500 bg-cyan-500'}`} />
                                 </div>
 
-                                <div className="p-6 flex flex-col flex-1 relative z-20">
+                                <div className="p-5 flex flex-col flex-1 relative z-20">
                                   <h4 className="font-black text-[13px] uppercase tracking-wider text-white line-clamp-1 mb-2 group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-white group-hover:to-gray-400 transition-all">
                                     {item.name}
                                   </h4>
@@ -1389,27 +1510,34 @@ export default function DonatePage() {
                                   </p>
 
                                   <div className="mt-auto space-y-4">
+                                    {item.service_type === 'bundle' && (
+                                      <button
+                                        onClick={() => { setActiveKitId(item.id); setOpenKitModal(true); }}
+                                        className="w-full flex items-center justify-center gap-2 rounded-xl border border-indigo-400/45 bg-gradient-to-r from-indigo-500/25 to-cyan-500/20 px-3 py-2 text-indigo-100 hover:from-indigo-500 hover:to-cyan-500 hover:text-white shadow-[0_0_24px_rgba(99,102,241,0.2)] transition-all"
+                                        title="Abrir previsualización del contenido"
+                                      >
+                                        <Package className="w-4 h-4" />
+                                        <span className="text-[10px] font-black uppercase tracking-widest">Previsualizar Contenido del Pack</span>
+                                      </button>
+                                    )}
+
                                     <div className="flex items-center justify-between border-t border-white/5 pt-4">
-                                       <div className="flex flex-col">
+                                       <div className="flex flex-col gap-1">
                                           {(item.price_dp > 0 || (item.price > 0 && item.currency === 'dp')) && (
-                                            <div className="text-yellow-400 font-black text-sm tracking-tighter flex items-center gap-1.5">
-                                              {item.price_dp || item.price} <span className="text-[8px] font-bold text-gray-500 opacity-80 uppercase">Donación</span>
+                                            <div className="inline-flex items-center gap-1.5 bg-yellow-500/10 border border-yellow-500/30 rounded-lg px-2.5 py-1 text-yellow-300 font-black text-sm tracking-tighter">
+                                              {item.price_dp || item.price} <span className="text-[9px] font-bold text-yellow-100/70 uppercase">Donación</span>
                                             </div>
                                           )}
                                           {(item.price_vp > 0 || (item.currency === 'vp' && item.price > 0)) && (
-                                            <div className="text-violet-400 font-black text-sm tracking-tighter flex items-center gap-1.5">
-                                              {item.price_vp || item.price} <span className="text-[8px] font-bold text-gray-500 opacity-80 uppercase">Estelas</span>
+                                            <div className="inline-flex items-center gap-1.5 bg-violet-500/10 border border-violet-500/30 rounded-lg px-2.5 py-1 text-violet-300 font-black text-sm tracking-tighter">
+                                              {item.price_vp || item.price} <span className="text-[9px] font-bold text-violet-100/70 uppercase">Estelas</span>
                                             </div>
                                           )}
                                        </div>
                                        {item.service_type === 'bundle' && (
-                                          <button 
-                                            onClick={() => { setActiveKitId(item.id); setOpenKitModal(true); }} 
-                                            className="p-2.5 bg-indigo-500/10 hover:bg-indigo-500/20 rounded-xl border border-indigo-500/30 transition-all"
-                                            title="Ver Contenido"
-                                          >
-                                            <Package className="w-4 h-4 text-indigo-400" />
-                                          </button>
+                                          <span className="text-[10px] font-black uppercase tracking-widest text-indigo-300 bg-indigo-500/10 border border-indigo-500/30 rounded-lg px-2 py-1">
+                                            Incluye varios items
+                                          </span>
                                        )}
                                     </div>
                                     
@@ -1418,12 +1546,12 @@ export default function DonatePage() {
                                           <button
                                             onClick={() => handlePurchase(item.id, 'dp')}
                                             disabled={purchasingItemId !== null}
-                                            className={`flex-1 border rounded-xl py-3 font-black text-[9px] uppercase tracking-widest transition-all ${
+                                            className={`flex-1 border rounded-xl py-3.5 font-black text-[10px] uppercase tracking-widest transition-all ${
                                               purchasingItemId === item.id
                                                 ? 'bg-yellow-900/40 border-yellow-700/30 text-yellow-500 cursor-not-allowed animate-pulse'
                                                 : purchasingItemId !== null
                                                 ? 'bg-yellow-600/5 border-yellow-700/20 text-yellow-800 cursor-not-allowed'
-                                                : ('bg-yellow-600/10 hover:bg-yellow-600 text-yellow-500 hover:text-white border-yellow-600/40 active:scale-95' + (deliveryMode === 'gift' ? ' ring-2 ring-yellow-500/50 scale-[1.02]' : ''))
+                                                : ('bg-gradient-to-r from-yellow-500/25 to-amber-500/20 hover:from-yellow-500 hover:to-amber-500 text-yellow-200 hover:text-black border-yellow-400/50 shadow-[0_0_20px_rgba(234,179,8,0.15)] active:scale-95' + (deliveryMode === 'gift' ? ' ring-2 ring-yellow-500/60 scale-[1.02]' : ''))
                                             }`}
                                           >
                                             {purchasingItemId === item.id ? '⏳ Procesando...' : deliveryMode === 'gift' ? '🎁 Regalar con DP' : 'Canjear DP'}
@@ -1433,12 +1561,12 @@ export default function DonatePage() {
                                           <button
                                             onClick={() => handlePurchase(item.id, 'vp')}
                                             disabled={purchasingItemId !== null}
-                                            className={`flex-1 border rounded-xl py-3 font-black text-[9px] uppercase tracking-widest transition-all ${
+                                            className={`flex-1 border rounded-xl py-3.5 font-black text-[10px] uppercase tracking-widest transition-all ${
                                               purchasingItemId === item.id
                                                 ? 'bg-violet-900/40 border-violet-700/30 text-violet-500 cursor-not-allowed animate-pulse'
                                                 : purchasingItemId !== null
                                                 ? 'bg-violet-600/5 border-violet-700/20 text-violet-800 cursor-not-allowed'
-                                                : 'bg-violet-600/10 hover:bg-violet-600 text-violet-400 hover:text-white border-violet-600/40 active:scale-95'
+                                                : 'bg-gradient-to-r from-violet-500/25 to-fuchsia-500/20 hover:from-violet-500 hover:to-fuchsia-500 text-violet-100 hover:text-white border-violet-400/50 shadow-[0_0_20px_rgba(139,92,246,0.16)] active:scale-95'
                                             }`}
                                           >
                                             {purchasingItemId === item.id ? '⏳ Procesando...' : 'Canjear VP'}

@@ -2,6 +2,12 @@ import { NextResponse } from 'next/server';
 import { authPool } from '@/lib/db';
 import { getAccountAccessSchema, getGMLevel } from '@/lib/gmLevel';
 
+async function ensureAuthorCharacterColumn() {
+  try {
+    await authPool.query('ALTER TABLE forum_topics ADD COLUMN author_character VARCHAR(32) NULL DEFAULT NULL AFTER author_id');
+  } catch {}
+}
+
 // Reutiliza la misma promise de migración del route padre para no duplicar checks
 async function isGM(userId: number): Promise<boolean> {
   const lvl = await getGMLevel(userId);
@@ -18,6 +24,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    await ensureAuthorCharacterColumn();
+
     const { id: rawId } = await params;
     const id = Number(rawId);
     if (!id || id <= 0) return NextResponse.json({ error: 'ID inválido' }, { status: 400 });
@@ -32,7 +40,7 @@ export async function GET(
          t.id, t.title, t.category, t.pinned, t.locked,
          COALESCE(t.completed, 0) AS completed,
          t.views, t.created_at,
-         t.author_id, COALESCE(a.username, '[Deleted]') AS author_username,
+         t.author_id, COALESCE(NULLIF(t.author_character, ''), COALESCE(a.username, '[Deleted]')) AS author_username,
          MAX(aa.\`${schema.gmCol}\`) AS gmlevel
        FROM forum_topics t
        LEFT JOIN account a ON t.author_id = a.id

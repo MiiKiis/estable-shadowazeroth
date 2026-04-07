@@ -184,6 +184,7 @@ async function deliverProfession(charGuid: number, charName: string, itemId: num
 
   // Skill via DB (primary) or SOAP (fallback)
   if (skillId > 0) {
+    const safeLevel = Math.min(skillLevel, 450);
     try {
       const [existing]: any = await pool.query(
         'SELECT guid FROM character_skills WHERE guid = ? AND skill = ? LIMIT 1',
@@ -191,14 +192,14 @@ async function deliverProfession(charGuid: number, charName: string, itemId: num
       );
       if (existing && existing.length > 0) {
         await pool.query('UPDATE character_skills SET value = ?, max = ? WHERE guid = ? AND skill = ?',
-          [skillLevel, skillLevel, charGuid, skillId]);
+          [safeLevel, safeLevel, charGuid, skillId]);
       } else {
         await pool.query('INSERT INTO character_skills (guid, skill, value, max) VALUES (?, ?, ?, ?)',
-          [charGuid, skillId, skillLevel, skillLevel]);
+          [charGuid, skillId, safeLevel, safeLevel]);
       }
     } catch {
       try {
-        await executeSoapCommand(`.setskill ${skillId} ${skillLevel} ${skillLevel} ${charName}`);
+        await executeSoapCommand(`.setskill ${charName} ${skillId} ${safeLevel} ${safeLevel}`);
       } catch {
         throw new Error('No se pudo aplicar la profesión.');
       }

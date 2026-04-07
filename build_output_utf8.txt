@@ -39,8 +39,6 @@ Route (app)                          Revalidate  Expire
 Ôö£ ãÆ /api/news
 Ôö£ ãÆ /api/payments/cryptomus/invoice
 Ôö£ ãÆ /api/payments/qr-bolivia
-Ôö£ ãÆ /api/payments/stripe/checkout
-Ôö£ ãÆ /api/payments/stripe/webhook
 Ôö£ ãÆ /api/register
 Ôö£ ãÆ /api/shop/items
 Ôö£ ãÆ /api/shop/purchase

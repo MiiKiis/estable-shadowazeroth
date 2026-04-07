@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import pool, { authPool, getSoapUrl, worldPool } from '@/lib/db';
+import pool, { authPool, getSoapUrl } from '@/lib/db';
 import crypto from 'crypto';
 
 type Currency = 'vp' | 'dp';
@@ -141,98 +141,50 @@ async function executeSoapCommand(command: string) {
   return { skipped: false };
 }
 
-// ─── Mail-based item delivery (TrinityCore compatible) ──────────────────────
-// This is the safest method: items go to mailbox, no inventory overflow risk.
+// ─── Mail-based item delivery via SOAP (AzerothCore compatible) ─────────────
+
+function sanitizeSoapText(input: string): string {
+  return String(input || '')
+    .replace(/[\r\n]+/g, ' ')
+    .replace(/"/g, "'")
+    .trim();
+}
 
 async function sendItemsViaMail(params: {
-  receiverGuid: number;
+  receiverName: string;
   subject: string;
   body: string;
   items: { entry: number; count: number }[];
-  gold?: number;                               // in gold
+  gold?: number; // in gold
 }) {
-  const getMaxDurability = (() => {
-    const cache = new Map<number, number>();
-    return async (itemEntry: number) => {
-      if (cache.has(itemEntry)) return cache.get(itemEntry) || 0;
-      try {
-        let value = 0;
-        try {
-          const [rows]: any = await worldPool.query(
-            'SELECT MaxDurability AS maxDurability FROM item_template WHERE entry = ? LIMIT 1',
-            [itemEntry]
-          );
-          value = Number(rows?.[0]?.maxDurability || 0);
-        } catch {
-          const [rows]: any = await worldPool.query(
-            'SELECT maxDurability AS maxDurability FROM item_template WHERE entry = ? LIMIT 1',
-            [itemEntry]
-          );
-          value = Number(rows?.[0]?.maxDurability || 0);
-        }
-        const maxDurability = Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
-        cache.set(itemEntry, maxDurability);
-        return maxDurability;
-      } catch {
-        cache.set(itemEntry, 0);
-        return 0;
-      }
-    };
-  })();
+  const receiverName = sanitizeSoapText(params.receiverName);
+  if (!receiverName) {
+    throw new Error('Nombre de personaje invalido para envio por correo.');
+  }
 
-  const now = Math.floor(Date.now() / 1000);
-  const expireTime = now + 30 * 24 * 3600;      // 30 days
+  const subject = sanitizeSoapText(params.subject || 'Compra en Tienda');
+  const body = sanitizeSoapText(params.body || 'Gracias por tu apoyo.');
 
-  // Get current max IDs to avoid dependence on auto_increment
-  const [maxMailRow]: any = await pool.query('SELECT MAX(id) as maxId FROM mail');
-  let nextMailId = (maxMailRow[0]?.maxId || 0) + 1;
+  const normalizedItems = (params.items || [])
+    .map((it) => ({ entry: Number(it.entry), count: Math.max(1, Number(it.count) || 1) }))
+    .filter((it) => Number.isInteger(it.entry) && it.entry > 0);
 
-  const [maxInstanceRow]: any = await pool.query('SELECT MAX(guid) as maxGuid FROM item_instance');
-  let nextItemGuid = (maxInstanceRow[0]?.maxGuid || 0) + 1;
-
-  // Insert one mail per batch of 12 items (WoW mail limit per message)
+  // One SOAP mail per batch of 12 items to match in-game mailbox attachment limits.
   const ITEMS_PER_MAIL = 12;
   const batches: { entry: number; count: number }[][] = [];
-  for (let i = 0; i < params.items.length; i += ITEMS_PER_MAIL) {
-    batches.push(params.items.slice(i, i + ITEMS_PER_MAIL));
+  for (let i = 0; i < normalizedItems.length; i += ITEMS_PER_MAIL) {
+    batches.push(normalizedItems.slice(i, i + ITEMS_PER_MAIL));
   }
 
-  // If no items but gold, still send a mail
-  if (batches.length === 0 && (params.gold || 0) > 0) {
-    batches.push([]);
+  for (const batch of batches) {
+    const itemPayload = batch.map((it) => `${it.entry}:${it.count}`).join(' ');
+    await executeSoapCommand(`.send items ${receiverName} "${subject}" "${body}" ${itemPayload}`);
   }
 
-  for (let batchIdx = 0; batchIdx < batches.length; batchIdx++) {
-    const batch = batches[batchIdx];
-    const goldCopper = batchIdx === 0 ? (params.gold || 0) * 10000 : 0;
-    const hasItems = batch.length > 0 ? 1 : 0;
-    const mailId = nextMailId++;
-
-    // TrinityCore: mailType=0 (Normal), stationery=41, sender=0 (System)
-    await pool.query(
-      `INSERT INTO mail (id, messageType, stationery, sender, receiver, subject, body, has_items, expire_time, deliver_time, money, checked)
-       VALUES (?, 0, 41, 0, ?, ?, ?, ?, ?, ?, ?, 0)`,
-      [mailId, params.receiverGuid, params.subject, params.body, hasItems, expireTime, now, goldCopper]
-    );
-
-    // Insert each item into mail_items
-    for (let i = 0; i < batch.length; i++) {
-      const item = batch[i];
-      const itemGuid = nextItemGuid++;
-      const maxDurability = await getMaxDurability(item.entry);
-
-      // TrinityCore: item_instance (guid, itemEntry, owner_guid, count, enchantments)
-      const enchantments = '0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ';
-      await pool.query(
-        `INSERT INTO item_instance (guid, itemEntry, owner_guid, count, durability, enchantments) VALUES (?, ?, ?, ?, ?, ?)`,
-        [itemGuid, item.entry, params.receiverGuid, item.count, maxDurability, enchantments]
-      );
-
-      await pool.query(
-        `INSERT INTO mail_items (mail_id, item_guid, receiver) VALUES (?, ?, ?)`,
-        [mailId, itemGuid, params.receiverGuid]
-      );
-    }
+  const goldAmount = Math.max(0, Number(params.gold || 0));
+  if (goldAmount > 0) {
+    const goldCopper = Math.floor(goldAmount * 10000);
+    await executeSoapCommand(`.send money ${receiverName} "${subject}" "${body}" ${goldCopper}`);
   }
 }
 
@@ -284,7 +236,7 @@ async function deliverLevelBoost(character: CharacterRow, serviceData: string | 
   const items = parseItemList(itemsRaw);
   if (items.length > 0 || gold > 0) {
     await sendItemsViaMail({
-      receiverGuid: character.guid,
+      receiverName: character.name,
       subject: 'Boost de Nivel',
       body: `¡Felicidades! Has recibido un boost a nivel ${targetLevel}. Aquí están tus objetos y recursos.`,
       items,
@@ -323,7 +275,7 @@ async function deliverProfession(character: CharacterRow, itemId: number, servic
     try {
       if (rankSpellId) await executeSoapCommand(`.learn ${rankSpellId} ${character.name}`);
       const safeLevel = Math.min(skillLevel, 450);
-      await executeSoapCommand(`.setskill ${skillId} ${safeLevel} ${safeLevel} ${character.name}`);
+      await executeSoapCommand(`.setskill ${character.name} ${skillId} ${safeLevel} ${safeLevel}`);
     } catch {
       const safeLevel = Math.min(skillLevel, 450);
       const [existingSkill]: any = await pool.query(
@@ -341,7 +293,7 @@ async function deliverProfession(character: CharacterRow, itemId: number, servic
   const materials = parseItemList(materialsRaw);
   if (materials.length > 0) {
     await sendItemsViaMail({
-      receiverGuid: character.guid,
+      receiverName: character.name,
       subject: 'Kit de Profesión',
       body: 'Aquí tienes los materiales para tu profesión. ¡Revisa tu buzón!',
       items: materials,
@@ -663,7 +615,7 @@ export async function POST(request: Request) {
 
       if (itemsToDeliver.length > 0) {
         await sendItemsViaMail({
-          receiverGuid: character.guid,
+          receiverName: character.name,
           subject: mailSubject,
           body: mailBody,
           items: itemsToDeliver
@@ -678,7 +630,7 @@ export async function POST(request: Request) {
           case 'faction_change': await pool.query('UPDATE characters SET at_login = at_login | 64 WHERE guid = ?', [character.guid]); break;
           case 'level_boost': await deliverLevelBoost(character, item.service_data || null); break;
           case 'experience': await executeSoapCommand(`.modify xp ${character.name} ${Number(item.service_data) || 100000}`); break;
-          case 'gold_pack': await sendItemsViaMail({ receiverGuid: character.guid, subject: mailSubject, body: mailBody, items: [], gold: Number(item.service_data) || 1000 }); break;
+          case 'gold_pack': await sendItemsViaMail({ receiverName: character.name, subject: mailSubject, body: mailBody, items: [], gold: Number(item.service_data) || 1000 }); break;
           case 'profession': await deliverProfession(character, Number(item.item_id), item.service_data || null); break;
         }
       }

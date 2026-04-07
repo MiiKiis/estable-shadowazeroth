@@ -1,7 +1,13 @@
 import { NextResponse } from 'next/server';
-import { authPool } from '@/lib/db';
+import { authPool, pool } from '@/lib/db';
 import { readAvatarMap } from '@/lib/avatarStore';
 import { getAccountAccessSchema, getGMLevel } from '@/lib/gmLevel';
+
+async function ensureAuthorCharacterColumn() {
+  try {
+    await authPool.query('ALTER TABLE forum_comments ADD COLUMN author_character VARCHAR(32) NULL DEFAULT NULL AFTER author_id');
+  } catch {}
+}
 
 function resolveRole(gmlevel: number | null): string {
   const lvl = Number(gmlevel ?? 0);
@@ -21,6 +27,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    await ensureAuthorCharacterColumn();
+
     const { id: rawId } = await params;
     const topicId = Number(rawId);
     if (!topicId || topicId <= 0) return NextResponse.json({ error: 'ID inválido' }, { status: 400 });
@@ -47,7 +55,7 @@ export async function GET(
            c.created_at,
            c.updated_at,
            a.id         AS author_id,
-           a.username,
+           COALESCE(NULLIF(c.author_character, ''), a.username) AS username,
            MAX(aa.\`${schema.gmCol}\`) AS gmlevel
          FROM forum_comments c
          JOIN account a           ON c.author_id = a.id
@@ -94,6 +102,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    await ensureAuthorCharacterColumn();
+
     const { id: rawId } = await params;
     const topicId = Number(rawId);
     if (!topicId || topicId <= 0) return NextResponse.json({ error: 'ID inválido' }, { status: 400 });
@@ -101,10 +111,12 @@ export async function POST(
     const body = await request.json();
     const userId  = Number(body?.userId || 0);
     const comment = String(body?.comment || '').trim();
+    const characterName = String(body?.characterName || '').trim();
 
     if (!userId || userId <= 0)       return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
     if (!comment || comment.length < 2) return NextResponse.json({ error: 'El comentario no puede estar vacío' }, { status: 400 });
     if (comment.length > 10000)       return NextResponse.json({ error: 'Comentario demasiado largo (máx 10.000 caracteres)' }, { status: 400 });
+    if (!characterName) return NextResponse.json({ error: 'Debes seleccionar un personaje para responder' }, { status: 400 });
 
     // Verify topic exists and is not locked
     const [topicRows]: any = await authPool.query(
@@ -118,9 +130,15 @@ export async function POST(
     const [accountRows]: any = await authPool.query('SELECT id FROM account WHERE id = ? LIMIT 1', [userId]);
     if (!accountRows.length) return NextResponse.json({ error: 'Cuenta no encontrada' }, { status: 404 });
 
+    const [characterRows]: any = await pool.query(
+      'SELECT guid FROM characters WHERE account = ? AND name = ? LIMIT 1',
+      [userId, characterName]
+    );
+    if (!characterRows.length) return NextResponse.json({ error: 'El personaje seleccionado no pertenece a tu cuenta' }, { status: 403 });
+
     const [result]: any = await authPool.query(
-      'INSERT INTO forum_comments (topic_id, author_id, comment) VALUES (?, ?, ?)',
-      [topicId, userId, comment]
+      'INSERT INTO forum_comments (topic_id, author_id, author_character, comment) VALUES (?, ?, ?, ?)',
+      [topicId, userId, characterName, comment]
     );
 
     // Update topic updated_at so it rises in the list

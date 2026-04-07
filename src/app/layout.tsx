@@ -16,25 +16,65 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Shadow Azeroth - Servidor WoW 3.3.5a WotLK High Rate",
-  description: "Únete a la mejor comunidad de Wrath of the Lich King. Experiencia 3.3.5a estable, eventos únicos y comunidad activa en español e inglés. Proyecto educativo basado en emulación de código abierto (AzerothCore). Latencia baja desde Bolivia/Latam, scripts personalizados y hardware optimizado.",
-  keywords: "WoW, World of Warcraft, Shadow Azeroth, WotLK, 3.3.5a, Servidor Privado, MMORPG, AzerothCore, High Rate, Comunidad, Latencia Baja, Bolivia, Latinoamérica, Español, Inglés, Eventos, Scripts Personalizados, Hardware Optimizado",
+  metadataBase: new URL("https://shadowazeroth.com"),
+  title: {
+    default: "Shadow Azeroth | Servidor WoW WotLK 3.3.5a",
+    template: "%s | Shadow Azeroth",
+  },
+  description: "Servidor WoW WotLK 3.3.5a con comunidad activa, marketplace, foro, eventos y progreso constante para jugadores de Latinoamerica.",
+  keywords: [
+    "WoW",
+    "World of Warcraft",
+    "WotLK",
+    "Servidor WoW",
+    "Servidor 3.3.5a",
+    "Shadow Azeroth",
+    "MMORPG",
+    "foro WoW",
+    "marketplace WoW",
+    "Latinoamerica",
+    "Bolivia",
+  ],
   authors: [{ name: "Shadow Azeroth Team" }],
   creator: "Shadow Azeroth Team",
+  alternates: {
+    canonical: "/",
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      'max-video-preview': -1,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
+    },
+  },
   openGraph: {
-    title: "Shadow Azeroth - Servidor WoW 3.3.5a WotLK High Rate",
-    description: "Comunidad activa, experiencia estable, eventos únicos y soporte multilingüe. Proyecto educativo basado en AzerothCore.",
+    title: "Shadow Azeroth | Servidor WoW WotLK 3.3.5a",
+    description: "Comunidad activa, marketplace, foro y eventos para nuevos y veteranos en WotLK 3.3.5a.",
     type: "website",
     locale: "es_ES",
     siteName: "SHADOW AZEROTH",
     url: "https://shadowazeroth.com",
+    images: [
+      {
+        url: "/logo-shadow.png",
+        width: 1200,
+        height: 630,
+        alt: "Shadow Azeroth",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Shadow Azeroth - Servidor WoW 3.3.5a WotLK High Rate",
-    description: "Únete a la mejor comunidad de WotLK. Proyecto educativo, experiencia estable, eventos únicos.",
+    title: "Shadow Azeroth | Servidor WoW WotLK 3.3.5a",
+    description: "Explora marketplace, foro y eventos en una comunidad activa de WotLK.",
+    images: ["/logo-shadow.png"],
     creator: "@shadowazeroth",
   },
+  category: "games",
 };
 
 export default function RootLayout({
@@ -54,7 +94,7 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen flex flex-col`}
       >
         <ClientHeader />
-        <main className="flex-grow overflow-hidden w-full max-w-full">
+        <main className="flex-grow overflow-x-clip w-full max-w-full">
           {children}
         </main>
         <Footer />

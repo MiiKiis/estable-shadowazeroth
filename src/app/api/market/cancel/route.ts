@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { authPool, pool as charPool } from '@/lib/db';
 
+const MARKET_HOLD_ACCOUNT_ID = 1;
+
 export async function POST(req: Request) {
   try {
     const { listingId, accountId } = await req.json();
@@ -39,8 +41,8 @@ export async function POST(req: Request) {
 
       // 1. Mover el personaje de vuelta de la Cuenta Retenida al Vendedor original
       const [updateChar]: any = await charPool.query(
-        'UPDATE characters SET account = ? WHERE guid = ? AND account = 999999',
-        [sellerId, listing.char_guid]
+        'UPDATE characters SET account = ? WHERE guid = ? AND account = ?',
+        [sellerId, listing.char_guid, MARKET_HOLD_ACCOUNT_ID]
       );
 
       if (updateChar.affectedRows === 0) {

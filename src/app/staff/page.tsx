@@ -401,7 +401,7 @@ export default function StaffPage() {
             <Crown className="w-3.5 h-3.5" />
             Únete al Equipo
           </div>
-          <h1 className="text-5xl md:text-7xl font-black uppercase tracking-tight text-white drop-shadow-2xl mb-4"
+          <h1 className="text-3xl sm:text-5xl md:text-7xl font-black uppercase tracking-tight text-white drop-shadow-2xl mb-4 leading-tight"
             style={{ textShadow: `0 0 40px ${currentRole.glowColor}` }}>
             Nuestro <span className="bg-clip-text text-transparent" style={{ backgroundImage: `linear-gradient(90deg, ${currentRole.primaryColor}, ${currentRole.secondaryColor})` }}>Staff</span>
           </h1>

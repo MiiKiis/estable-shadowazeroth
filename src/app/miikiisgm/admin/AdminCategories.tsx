@@ -15,6 +15,19 @@ interface Category {
   order_index: number;
 }
 
+function normalizeParentId(parentId: number | null | undefined): number | null {
+  const parsed = Number(parentId);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function sortCategories(list: Category[]): Category[] {
+  return [...list].sort((a, b) => {
+    const orderDiff = Number(a.order_index || 0) - Number(b.order_index || 0);
+    if (orderDiff !== 0) return orderDiff;
+    return Number(a.id) - Number(b.id);
+  });
+}
+
 export default function AdminCategories() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
@@ -145,10 +158,120 @@ export default function AdminCategories() {
     }
   };
 
-  // Build tree for display - Usamos comparaciones más flexibles para evitar problemas de tipos string/number
-  const mainCategories = categories.filter(c => !c.parent_id || Number(c.parent_id) === 0);
-  const getSubcategories = (parentId: number) => 
-    categories.filter(c => c.parent_id !== null && Number(c.parent_id) === Number(parentId));
+  const orderedCategories = sortCategories(categories);
+  const rootCategories = orderedCategories.filter(c => normalizeParentId(c.parent_id) === null);
+
+  const getChildren = (parentId: number | null) =>
+    orderedCategories.filter(c => normalizeParentId(c.parent_id) === (parentId === null ? null : Number(parentId)));
+
+  const getDescendantIds = (parentId: number, visited = new Set<number>()): Set<number> => {
+    for (const child of getChildren(parentId)) {
+      if (visited.has(child.id)) continue;
+      visited.add(child.id);
+      getDescendantIds(child.id, visited);
+    }
+    return visited;
+  };
+
+  const blockedParentIds = new Set<number>();
+  if (editingId) {
+    blockedParentIds.add(editingId);
+    for (const descendantId of getDescendantIds(editingId)) blockedParentIds.add(descendantId);
+  }
+
+  const buildParentOptions = (parentId: number | null, depth = 0, path = new Set<number>()): JSX.Element[] => {
+    const out: JSX.Element[] = [];
+    const nodes = getChildren(parentId);
+
+    for (const node of nodes) {
+      if (path.has(node.id)) continue;
+
+      if (!blockedParentIds.has(node.id)) {
+        const prefix = depth > 0 ? `${'\u00A0\u00A0'.repeat(depth)}↳ ` : '';
+        out.push(
+          <option key={node.id} value={node.id}>
+            {prefix}{node.name}
+          </option>
+        );
+      }
+
+      const nextPath = new Set(path);
+      nextPath.add(node.id);
+      out.push(...buildParentOptions(node.id, depth + 1, nextPath));
+    }
+
+    return out;
+  };
+
+  const handleCreateChild = (parent: Category) => {
+    setEditingId(null);
+    setForm(prev => ({
+      ...prev,
+      slug: '',
+      name: '',
+      description: '',
+      parent_id: String(parent.id),
+      order_index: '0',
+    }));
+    setSuccess(`Creando subcategoría dentro de: ${parent.name}`);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const renderSchema = (parentId: number | null, depth = 0, path = new Set<number>()): JSX.Element[] => {
+    const rows: JSX.Element[] = [];
+    const nodes = getChildren(parentId);
+
+    for (const node of nodes) {
+      if (path.has(node.id)) continue;
+      const nextPath = new Set(path);
+      nextPath.add(node.id);
+
+      const prefix = depth === 0 ? '•' : `${'│  '.repeat(Math.max(0, depth - 1))}└─`;
+
+      rows.push(
+        <div key={node.id} className="rounded-xl border border-white/10 bg-[#090d18] px-4 py-3 flex items-center justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="font-mono text-xs text-fuchsia-400/90 whitespace-pre">{prefix}</span>
+              <span className="font-bold text-sm text-white truncate">{node.name}</span>
+              <span className="text-[10px] text-gray-400 font-mono truncate">{node.slug}</span>
+            </div>
+            <div className="text-[10px] text-gray-500 mt-1 font-mono">
+              id:{node.id} · parent:{normalizeParentId(node.parent_id) ?? 'root'} {node.image_url ? '· img:url' : ''}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              onClick={() => handleCreateChild(node)}
+              className="px-2.5 py-1.5 rounded-lg bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 hover:bg-cyan-500/20 transition-all text-[10px] font-black uppercase"
+              title="Crear subcategoría"
+            >
+              + hija
+            </button>
+            <button
+              onClick={() => handleEdit(node)}
+              className="p-2 rounded-lg bg-white/5 text-gray-400 hover:text-white transition-all"
+              title="Editar"
+            >
+              <Edit3 className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => handleDelete(node.id)}
+              className="p-2 rounded-lg bg-white/5 text-gray-400 hover:text-rose-400 transition-all"
+              title="Eliminar"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      );
+
+      rows.push(...renderSchema(node.id, depth + 1, nextPath));
+    }
+
+    return rows;
+  };
 
   return (
     <div className="max-w-6xl mx-auto py-6 text-white">
@@ -213,7 +336,7 @@ export default function AdminCategories() {
 
           <div className="space-y-1">
             <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-1.5">
-              <Tag className="w-3 h-3 text-fuchsia-500" /> Icono (Lucide)
+              <Tag className="w-3 h-3 text-fuchsia-500" /> Icono (opcional)
             </label>
             <input 
               className="w-full bg-black/60 border border-purple-500/30 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-fuchsia-400/50 transition-all text-sm" 
@@ -225,7 +348,7 @@ export default function AdminCategories() {
 
           <div className="md:col-span-2 space-y-1">
             <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-1.5">
-              <ImageIcon className="w-3 h-3 text-fuchsia-500" /> URL de Imagen de Fondo (Secciones principales)
+              <ImageIcon className="w-3 h-3 text-fuchsia-500" /> URL de Imagen (recomendado)
             </label>
             <input 
               className="w-full bg-black/60 border border-purple-500/30 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-fuchsia-400/50 transition-all text-sm" 
@@ -237,7 +360,7 @@ export default function AdminCategories() {
 
           <div className="space-y-1">
             <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-1.5">
-              <Layers className="w-3 h-3 text-fuchsia-500" /> Categoría Padre (Para Subsección)
+              <Layers className="w-3 h-3 text-fuchsia-500" /> Categoría Padre (subnivel infinito)
             </label>
             <select 
               className="w-full bg-black/60 border border-purple-500/30 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-fuchsia-400/50 transition-all text-sm cursor-pointer"
@@ -245,9 +368,7 @@ export default function AdminCategories() {
               onChange={e => setForm({...form, parent_id: e.target.value})}
             >
               <option value="">-- Ninguna (Es sección principal) --</option>
-              {mainCategories.filter(c => c.id !== editingId).map(c => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
+              {buildParentOptions(null)}
             </select>
           </div>
 
@@ -297,89 +418,9 @@ export default function AdminCategories() {
             <p className="text-sm font-bold uppercase tracking-widest">Sincronizando base de datos...</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-6">
-            {mainCategories.map((c) => {
-              const subs = getSubcategories(c.id);
-              return (
-                <div key={c.id} className="group">
-                  {/* Parent Card */}
-                  <div className="bg-[#0a0a1a] border border-white/5 p-6 rounded-2xl flex items-center justify-between gap-4 shadow-xl hover:border-fuchsia-500/30 transition-all">
-                    <div className="flex items-center gap-4 flex-1 min-w-0">
-                      <div className="w-12 h-12 rounded-xl bg-fuchsia-950/40 border border-fuchsia-500/20 flex items-center justify-center shrink-0">
-                        <Tag className="w-6 h-6 text-fuchsia-400" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <h4 className="font-black text-lg text-white truncate">{c.name}</h4>
-                          <span className="text-[10px] bg-indigo-500/10 text-indigo-400 px-2 py-0.5 rounded border border-indigo-500/20 font-black uppercase tracking-tighter shrink-0">
-                            SECCIÓN PRINCIPAL
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-3 text-[10px] text-gray-500 font-bold uppercase tracking-wider mt-0.5">
-                           <span>Slug: {c.slug}</span>
-                           <span>•</span>
-                           <span className="text-indigo-400/80">{subs.length} Subsecciones</span>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-center gap-2">
-                      <button 
-                        onClick={() => handleEdit(c)}
-                        className="p-3 rounded-xl bg-white/5 text-gray-400 hover:bg-fuchsia-600 hover:text-white transition-all shadow-sm"
-                        title="Editar"
-                      >
-                        <Edit3 className="w-5 h-5" />
-                      </button>
-                      <button 
-                        onClick={() => handleDelete(c.id)}
-                        className="p-3 rounded-xl bg-rose-900/10 text-rose-400 hover:bg-rose-600 hover:text-white transition-all shadow-sm"
-                        title="Eliminar"
-                      >
-                        <Trash2 className="w-5 h-5" />
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Subsections */}
-                  {subs.length > 0 && (
-                    <div className="ml-12 mt-3 space-y-3 pl-6 border-l-2 border-fuchsia-500/10">
-                      {subs.map(s => (
-                        <div key={s.id} className="bg-black/30 border border-white/5 p-4 rounded-xl flex items-center justify-between gap-4 hover:border-fuchsia-500/20 transition-all">
-                          <div className="flex items-center gap-3 flex-1 min-w-0">
-                            <ChevronRight className="w-4 h-4 text-fuchsia-500/40" />
-                            <div className="flex-1 min-w-0">
-                               <div className="flex items-center gap-2">
-                                 <p className="font-bold text-gray-200 text-sm truncate">{s.name}</p>
-                                 <span className="text-[9px] bg-cyan-500/10 text-cyan-400 px-1.5 py-0.5 rounded border border-cyan-500/20 font-bold uppercase tracking-tighter shrink-0">
-                                   SUBSECCIÓN
-                                 </span>
-                               </div>
-                               <p className="text-[10px] text-gray-500 font-mono tracking-tighter">Slug: {s.slug}</p>
-                             </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <button 
-                              onClick={() => handleEdit(s)}
-                              className="p-2 rounded-lg bg-white/5 text-gray-500 hover:text-white transition-all"
-                            >
-                              <Edit3 className="w-4 h-4" />
-                            </button>
-                            <button 
-                              onClick={() => handleDelete(s.id)}
-                              className="p-2 rounded-lg bg-white/5 text-gray-500 hover:text-rose-400 transition-all"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-            {mainCategories.length === 0 && (
+          <div className="grid grid-cols-1 gap-3">
+            {renderSchema(null)}
+            {rootCategories.length === 0 && (
               <div className="text-center py-20 bg-black/20 rounded-3xl border border-dashed border-white/10">
                 <Layers className="w-12 h-12 text-gray-600 mx-auto mb-4" />
                 <p className="text-gray-500 font-bold uppercase tracking-widest text-sm">No has configurado ninguna sección aún.</p>

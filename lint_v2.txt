@@ -227,10 +227,8 @@ D:\azerothcore\pagina\src\app\api\payments\paypal\capture\route.ts
    93:27  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
   107:19  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
 
-D:\azerothcore\pagina\src\app\api\payments\stripe\checkout\route.ts
   53:19  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
 
-D:\azerothcore\pagina\src\app\api\payments\stripe\webhook\route.ts
   26:17  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
   49:23  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
   73:27  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any

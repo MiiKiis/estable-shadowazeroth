@@ -5,6 +5,7 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: true,
   },
   serverExternalPackages: ['ssh2'],
+  turbopack: {},
   images: {
     localPatterns: [
       {
@@ -12,18 +13,6 @@ const nextConfig: NextConfig = {
         search: '',
       },
     ],
-  },
-  // Turbopack config (used with `next dev --turbo`)
-  experimental: {
-    turbo: {
-      resolveAlias: {
-        // Tell Turbopack to ignore these Node.js built-ins on the client side
-        fs: { browser: false },
-        net: { browser: false },
-        tls: { browser: false },
-        child_process: { browser: false },
-      },
-    },
   },
   // Webpack config (used with `next build` and `next dev` without --turbo)
   webpack: (config, { isServer }) => {

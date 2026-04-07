@@ -39,6 +39,16 @@ type Topic = {
   author: { id: number; username: string };
 };
 
+type CharacterOption = {
+  guid: number;
+  name: string;
+  level: number;
+};
+
+function getForumCharacterStorageKey(userId: number): string {
+  return `forum_selected_character_${userId}`;
+}
+
 const ROLE_BADGE: Record<string, string> = {
   GM:        'bg-amber-900/50 border-amber-500/50 text-amber-300',
   Moderador: 'bg-cyan-900/50  border-cyan-500/50  text-cyan-300',
@@ -140,6 +150,8 @@ export default function TopicPage() {
   const [posting,      setPosting]      = useState(false);
   const [postError,    setPostError]    = useState('');
   const [postSuccess,  setPostSuccess]  = useState(false);
+  const [characters, setCharacters] = useState<CharacterOption[]>([]);
+  const [selectedCharacterName, setSelectedCharacterName] = useState('');
 
   const [editingId,    setEditingId]    = useState<number | null>(null);
   const [editText,     setEditText]     = useState('');
@@ -246,8 +258,39 @@ export default function TopicPage() {
 
   useEffect(() => {
     const raw = localStorage.getItem('user');
-    if (raw) { try { setUser(JSON.parse(raw)); } catch {} }
+    if (raw) {
+      try {
+        const parsedUser = JSON.parse(raw);
+        setUser(parsedUser);
+
+        if (parsedUser?.id) {
+          fetch(`/api/characters?accountId=${parsedUser.id}`)
+            .then((r) => r.json())
+            .then((d) => {
+              const chars = Array.isArray(d?.characters) ? d.characters : [];
+              const parsed: CharacterOption[] = chars
+                .map((c: any) => ({ guid: Number(c?.guid || 0), name: String(c?.name || ''), level: Number(c?.level || 0) }))
+                .filter((c: CharacterOption) => c.guid > 0 && c.name.length > 0)
+                .sort((a: CharacterOption, b: CharacterOption) => a.name.localeCompare(b.name));
+
+              setCharacters(parsed);
+              const saved = String(localStorage.getItem(getForumCharacterStorageKey(Number(parsedUser.id))) || '');
+              const preferred = parsed.some((p) => p.name === saved) ? saved : (parsed[0]?.name || '');
+              setSelectedCharacterName(preferred);
+            })
+            .catch(() => {
+              setCharacters([]);
+              setSelectedCharacterName('');
+            });
+        }
+      } catch {}
+    }
   }, []);
+
+  useEffect(() => {
+    if (!user?.id || !selectedCharacterName) return;
+    localStorage.setItem(getForumCharacterStorageKey(Number(user.id)), selectedCharacterName);
+  }, [selectedCharacterName, user?.id]);
 
   const loadData = async () => {
     try {
@@ -385,6 +428,10 @@ export default function TopicPage() {
   const handlePost = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) { router.push('/'); return; }
+    if (!selectedCharacterName.trim()) {
+      setPostError('Selecciona un personaje para responder.');
+      return;
+    }
 
     setPosting(true);
     setPostError('');
@@ -394,7 +441,7 @@ export default function TopicPage() {
       const res = await fetch(`/api/forum/topics/${topicId}/comments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.id, comment: reply }),
+        body: JSON.stringify({ userId: user.id, comment: reply, characterName: selectedCharacterName }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Error publicando');
@@ -687,6 +734,21 @@ export default function TopicPage() {
                 <MessageSquare className="w-5 h-5" /> Publicar Respuesta
               </h2>
               <form onSubmit={handlePost} className="space-y-4">
+                <div className="rounded-xl border border-amber-500/35 bg-amber-900/10 px-4 py-3">
+                  <p className="text-[10px] uppercase tracking-wider text-amber-300 font-black mb-2">Responder como personaje</p>
+                  <select
+                    className="w-full bg-black/50 border border-amber-500/45 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-400/60"
+                    value={selectedCharacterName}
+                    onChange={(e) => setSelectedCharacterName(e.target.value)}
+                  >
+                    {characters.length === 0 ? (
+                      <option value="">Sin personajes disponibles</option>
+                    ) : (
+                      characters.map((c) => <option key={c.guid} value={c.name}>{c.name} (lvl {c.level})</option>)
+                    )}
+                  </select>
+                </div>
+
                 <div className="bg-[#03060d]/60 border border-purple-500/20 rounded-2xl overflow-hidden flex flex-col">
                   <div className="border-b border-purple-500/20 bg-purple-900/10 p-2 flex flex-wrap gap-1">
                     <button type="button" onClick={() => insertBBCode('[b]', '[/b]')} className="p-2 hover:bg-purple-900/40 rounded-lg text-gray-300 hover:text-white transition-colors" title="Negrita"><Bold className="w-4 h-4" /></button>
@@ -721,9 +783,9 @@ export default function TopicPage() {
                   <span className="text-xs text-gray-500">{reply.length} / 10.000</span>
                   <button
                     type="submit"
-                    disabled={posting || !reply.trim()}
+                    disabled={posting || !reply.trim() || !selectedCharacterName || characters.length === 0}
                     className={`inline-flex items-center gap-2 px-7 py-3 rounded-2xl font-black text-sm uppercase tracking-wider transition-all shadow-[0_8px_24px_rgba(91,33,182,0.4)] ${
-                      posting || !reply.trim()
+                      posting || !reply.trim() || !selectedCharacterName || characters.length === 0
                         ? 'bg-purple-800/50 cursor-not-allowed opacity-60'
                         : 'bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-600 hover:to-indigo-600'
                     }`}

@@ -55,7 +55,6 @@ async function fixShopTables() {
         character_guid INT UNSIGNED NULL,
         character_name VARCHAR(60)  NOT NULL DEFAULT '',
         is_gift        TINYINT(1)   NOT NULL DEFAULT 0,
-        stripe_session VARCHAR(200) NULL COMMENT 'Stripe session ID si aplica',
         created_at     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
         KEY idx_account_created (account_id, created_at)

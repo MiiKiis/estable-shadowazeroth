@@ -35,13 +35,13 @@ export default function DisclaimerPage() {
             </p>
           </section>
 
-          {/* Section 2: Educational Purpose */}
+          {/* Section 2: Service Purpose */}
           <section className="p-8 bg-black/60 border border-purple-900/30 rounded-sm backdrop-blur-md">
-            <h2 className="text-2xl font-black text-purple-600 mb-4 uppercase tracking-wide">Propósito Educativo y de Prueba</h2>
+            <h2 className="text-2xl font-black text-purple-600 mb-4 uppercase tracking-wide">Propósito del Servicio</h2>
             <p className="text-gray-400 text-sm leading-relaxed">
-              Shadow Azeroth es un proyecto creado <strong>exclusivamente con fines educativos y de prueba</strong>. 
-              Este servidor no es una entidad comercial oficial y no intenta replicar exactamente la experiencia comercial de World of Warcraft, 
-              sino servir como ejemplo de cómo funciona la tecnología de servidor MMO.
+              Shadow Azeroth es una comunidad independiente para jugadores de World of Warcraft 3.3.5a. 
+              No representa una entidad comercial oficial de Blizzard Entertainment y opera como un servicio comunitario 
+              con reglas propias, contenido personalizado y soporte para su base de usuarios.
             </p>
           </section>
 
@@ -54,9 +54,8 @@ export default function DisclaimerPage() {
               <strong>NO</strong> es una transacción comercial de compra de artículos o servicios.
             </p>
             <p className="text-gray-400 text-sm leading-relaxed">
-              Nunca utilizamos términos como &quot;Tienda&quot;, &quot;Comprar&quot;, &quot;Vender&quot; u otros vocablos comerciales. 
-              Toda actividad se realiza bajo el término &quot;Recompensas de Donación&quot; para clarificar que es un acto voluntario de apoyo, 
-              no una venta.
+              Las recompensas digitales dentro del juego se entregan como parte del sistema de apoyo al servidor. 
+              El uso de términos de interfaz como &quot;tienda&quot; o &quot;marketplace&quot; no modifica el carácter voluntario de la contribución.
             </p>
           </section>
 
@@ -75,12 +74,11 @@ export default function DisclaimerPage() {
           <section className="p-8 bg-black/60 border border-green-900/30 rounded-sm backdrop-blur-md">
             <h2 className="text-2xl font-black text-green-600 mb-4 uppercase tracking-wide">Derechos del Servidor</h2>
             <p className="text-gray-400 text-sm leading-relaxed mb-4">
-              Este servidor se basa en AzerothCore, un proyecto de código abierto. Agradecemos a la comunidad de AzerothCore 
-              por su trabajo en la emulación del servidor MMO.
+              Shadow Azeroth opera con infraestructura y configuraciones propias para brindar estabilidad, rendimiento y continuidad del servicio.
             </p>
             <p className="text-gray-400 text-sm leading-relaxed">
               El contenido original creado por Shadow Azeroth (código de servidor personalizado, implementaciones específicas, 
-              y sistemas propios) se reserva todos los derechos, pero se comparte únicamente para fines educativos dentro de esta plataforma.
+              y sistemas propios) se encuentra protegido y reservado por el equipo del servidor.
             </p>
           </section>
 
@@ -115,7 +113,7 @@ export default function DisclaimerPage() {
               Los usuarios de Shadow Azeroth aceptan:
             </p>
             <ul className="list-disc list-inside space-y-2 text-gray-400 text-sm">
-              <li>Usar el servidor únicamente con fines educativos y de entretenimiento personal</li>
+              <li>Usar el servidor para entretenimiento personal, respetando las reglas oficiales publicadas por el staff</li>
               <li>No realizar actividades comerciales o de venta de cuentas/items</li>
               <li>Respetar el código de conducta de la comunidad</li>
               <li>No compartir información de otros jugadores sin consentimiento</li>

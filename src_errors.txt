@@ -1,6 +1,4 @@
-﻿src/app/api/payments/stripe/checkout/route.ts(7,3): error TS2322: Type '"2025-02-24.acacia"' is not assignable to type '"2026-02-25.clover"'.
-src/app/api/payments/stripe/webhook/route.ts(7,3): error TS2322: Type '"2024-12-18.acacia"' is not assignable to type '"2026-02-25.clover"'.
-src/app/api/register/route.ts(67,28): error TS2339: Property 'ip' does not exist on type 'NextRequest'.
+﻿src/app/api/register/route.ts(67,28): error TS2339: Property 'ip' does not exist on type 'NextRequest'.
 src/app/api/shop/purchase/route.ts(675,7): error TS18004: No value exists in scope for the shorthand property 'userId'. Either declare one or provide an initializer.
 src/app/api/shop/purchase/route.ts(676,7): error TS18004: No value exists in scope for the shorthand property 'itemId'. Either declare one or provide an initializer.
 src/app/api/shop/purchase/route.ts(677,7): error TS18004: No value exists in scope for the shorthand property 'currency'. Either declare one or provide an initializer.

@@ -126,6 +126,8 @@ export default function Dashboard() {
   const [pinError, setPinError] = useState('');
   const [pinSuccess, setPinSuccess] = useState('');
   const [pointsData, setPointsData] = useState<{ vp: number; dp: number; gmlevel?: number } | null>(null);
+  const r1AllowedUsers = new Set(['soporte1', 'gmsoporte1']);
+  const canSeeR1PanelButton = Number(pointsData?.gmlevel || 0) >= 1 || r1AllowedUsers.has(String(user?.username || '').toLowerCase());
 
   // ── Accept Gifts / Modo Streamer ─────────────────────
   const [acceptGifts, setAcceptGifts] = useState(true);
@@ -610,24 +612,33 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              <div className="space-y-1">
-                <span className={`text-xs font-black uppercase tracking-[0.6em] transition-colors duration-700 ${
+              <div className="space-y-1 min-w-0">
+                <span className={`text-[10px] sm:text-xs font-black uppercase tracking-[0.28em] sm:tracking-[0.6em] transition-colors duration-700 ${
                   faction === 'horde' ? 'text-red-400/80' : 'text-blue-300/80'
                 }`}>POR LA GLORIA DE</span>
-                <h1 className="text-4xl sm:text-6xl font-black italic tracking-tighter text-white uppercase leading-none">
+                <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black italic tracking-tighter text-white uppercase leading-none">
                   {faction === 'horde' ? 'LA HORDA' : 'LA ALIANZA'}
                 </h1>
                 <div className="flex items-center gap-3 pt-2">
                   <div className={`h-[2px] w-12 rounded-full ${faction === 'horde' ? 'bg-red-500' : 'bg-blue-500'}`} />
-                  <span className="text-sm font-bold text-gray-400 tracking-widest uppercase">Panel del Adalid</span>
+                  <span className="text-xs sm:text-sm font-bold text-gray-400 tracking-wider sm:tracking-widest uppercase">Panel del Adalid</span>
                 </div>
               </div>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-4 mb-2">
+          <div className="flex flex-wrap items-center gap-3 sm:gap-4 mb-2">
+            {canSeeR1PanelButton && (
+              <Link
+                href="/mg/r1"
+                className="inline-flex h-11 sm:h-12 items-center gap-2 px-4 sm:px-6 bg-gradient-to-r from-[#0a1220] to-[#0f1e38] border border-cyan-400/55 text-cyan-200 hover:text-white hover:border-cyan-300 text-[10px] sm:text-xs font-black uppercase tracking-[0.14em] sm:tracking-[0.2em] transition-all rounded-xl sm:rounded-2xl shadow-[0_0_18px_rgba(34,211,238,0.22)] hover:shadow-[0_0_30px_rgba(34,211,238,0.45)]"
+              >
+                <ShieldAlert className="w-4 h-4" />
+                PANEL R1
+              </Link>
+            )}
             <Link
               href="/donate"
-              className="inline-flex h-12 items-center gap-2 px-6 bg-gradient-to-r from-[#0f0b08] to-[#1a1109] border border-[#d4af37]/55 text-[#f3dc90] hover:text-white hover:border-[#d4af37] text-xs font-black uppercase tracking-[0.2em] transition-all rounded-2xl shadow-[0_0_18px_rgba(212,175,55,0.22)] hover:shadow-[0_0_30px_rgba(212,175,55,0.45)]"
+              className="inline-flex h-11 sm:h-12 items-center gap-2 px-4 sm:px-6 bg-gradient-to-r from-[#0f0b08] to-[#1a1109] border border-[#d4af37]/55 text-[#f3dc90] hover:text-white hover:border-[#d4af37] text-[10px] sm:text-xs font-black uppercase tracking-[0.14em] sm:tracking-[0.2em] transition-all rounded-xl sm:rounded-2xl shadow-[0_0_18px_rgba(212,175,55,0.22)] hover:shadow-[0_0_30px_rgba(212,175,55,0.45)]"
             >
               <CreditCard className="w-4 h-4" />
               DONACIONES
@@ -635,7 +646,7 @@ export default function Dashboard() {
             <button 
               type="button"
               onClick={logout}
-              className="inline-flex h-12 items-center gap-2 px-6 bg-gradient-to-r from-[#1a0909] to-[#2a0d0f] border border-[#8b2e35]/70 text-[#f2c4c8] hover:text-white hover:border-[#b33a44] text-xs font-black uppercase tracking-[0.2em] transition-all rounded-2xl shadow-[0_0_18px_rgba(139,46,53,0.28)] hover:shadow-[0_0_30px_rgba(179,58,68,0.5)]"
+              className="inline-flex h-11 sm:h-12 items-center gap-2 px-4 sm:px-6 bg-gradient-to-r from-[#1a0909] to-[#2a0d0f] border border-[#8b2e35]/70 text-[#f2c4c8] hover:text-white hover:border-[#b33a44] text-[10px] sm:text-xs font-black uppercase tracking-[0.14em] sm:tracking-[0.2em] transition-all rounded-xl sm:rounded-2xl shadow-[0_0_18px_rgba(139,46,53,0.28)] hover:shadow-[0_0_30px_rgba(179,58,68,0.5)]"
             >
               <LogOut className="w-4 h-4" />
               CERRAR SESION
@@ -734,7 +745,7 @@ export default function Dashboard() {
 
           {/* Character List Column */}
           <div className="w-full space-y-4 transition-all duration-300">
-            <div className="mb-6 flex items-center gap-6">
+            <div className="mb-6 flex flex-wrap items-center gap-3 sm:gap-6">
               <h3 className={`text-[10px] font-black uppercase tracking-[0.4em] flex items-center gap-3 transition-colors duration-700 ${
                 faction === 'horde' ? 'text-red-500' : 'text-blue-400'
               }`}>
@@ -1092,7 +1103,7 @@ export default function Dashboard() {
                   setShowApplyConfirm(false);
                 }}
                 disabled={avatarPage === 1}
-                className="inline-flex items-center gap-2 min-w-[120px] justify-center h-10 px-4 rounded-xl border border-white/20 bg-white/10 text-white hover:bg-white/15 text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                className="inline-flex items-center gap-2 min-w-0 flex-1 sm:flex-none sm:min-w-[120px] justify-center h-10 px-3 sm:px-4 rounded-xl border border-white/20 bg-white/10 text-white hover:bg-white/15 text-xs sm:text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <ChevronLeft className="w-5 h-5" />
                 Anterior
@@ -1108,7 +1119,7 @@ export default function Dashboard() {
                   setShowApplyConfirm(false);
                 }}
                 disabled={avatarPage === totalPages}
-                className="inline-flex items-center gap-2 min-w-[120px] justify-center h-10 px-4 rounded-xl border border-white/20 bg-white/10 text-white hover:bg-white/15 text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                className="inline-flex items-center gap-2 min-w-0 flex-1 sm:flex-none sm:min-w-[120px] justify-center h-10 px-3 sm:px-4 rounded-xl border border-white/20 bg-white/10 text-white hover:bg-white/15 text-xs sm:text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Siguiente
                 <ChevronRight className="w-5 h-5" />
@@ -1136,7 +1147,7 @@ export default function Dashboard() {
               </button>
             </div>
 
-            <div className="p-5 overflow-y-auto max-h-[calc(88vh-78px)]">
+            <div className="p-4 sm:p-5 overflow-y-auto max-h-[calc(88vh-78px)]">
               {historyLoading && (
                 <div className="py-16 text-center text-sm text-slate-300">Cargando historial...</div>
               )}
@@ -1153,50 +1164,54 @@ export default function Dashboard() {
 
               {!historyLoading && !historyError && purchaseHistory.length > 0 && (
                 <div className="rounded-2xl border border-white/15 overflow-hidden">
-                  <div className="grid grid-cols-[90px_1fr_120px_140px] bg-white/5 text-[10px] uppercase tracking-[0.2em] text-slate-300 font-black px-4 py-3">
-                    <span>Item</span>
-                    <span>Nombre</span>
-                    <span className="text-right">Costo</span>
-                    <span className="text-right">Fecha</span>
-                  </div>
-                  <div>
-                    {purchaseHistory.map((purchase) => (
-                      <a 
-                        key={purchase.id}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.dispatchEvent(new MouseEvent('mouseout', { bubbles: true }));
-                        }}
-                        href={
-                          purchase.service_type === 'profession'
-                            ? `https://www.wowhead.com/wotlk/spell=${SKILL_WOWHEAD_MAP[Number(purchase.item_id)] || purchase.item_id}`
-                            : purchase.service_type === 'level_boost' || purchase.service_type === 'gold_pack'
-                            ? '#'
-                            : `https://www.wowhead.com/wotlk/item=${purchase.item_id}`
-                        }
-                        data-wowhead={
-                          purchase.service_type === 'level_boost' || purchase.service_type === 'gold_pack'
-                            ? 'disabled'
-                            : purchase.service_type === 'profession'
-                            ? `spell=${SKILL_WOWHEAD_MAP[Number(purchase.item_id)] || purchase.item_id}&domain=wotlk`
-                            : `item=${purchase.item_id}&domain=wotlk`
-                        }
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="grid grid-cols-[90px_1fr_120px_140px] items-center px-4 py-3 border-t border-white/10 text-sm text-slate-200 hover:bg-white/5 transition-colors group"
-                      >
-                        <span className="text-xs font-black text-cyan-300">#{purchase.item_id}</span>
-                        <div className="min-w-0">
-                          <p className="font-semibold truncate">
-                            <span className="font-black text-white hover:text-cyan-400 transition-colors">
-                              {purchase.item_name || 'Item sin nombre'}
-                            </span>
-                          </p>
-                          <p className="text-[11px] text-slate-400">{purchase.character_name || 'Sin personaje'}{purchase.is_gift ? ' • Regalo' : ''}</p>
-                        </div>
-                        <span className="text-right font-bold text-amber-300">{purchase.price} {purchase.currency === 'vp' ? 'Estelas' : purchase.currency.toUpperCase()}</span>
-                        <span className="text-right text-xs text-slate-400">{formatPurchaseDate(purchase.created_at)}</span>
-                      </a>
-                    ))}
+                  <div className="overflow-x-auto">
+                    <div className="min-w-[620px]">
+                      <div className="grid grid-cols-[90px_1fr_120px_140px] bg-white/5 text-[10px] uppercase tracking-[0.2em] text-slate-300 font-black px-4 py-3">
+                        <span>Item</span>
+                        <span>Nombre</span>
+                        <span className="text-right">Costo</span>
+                        <span className="text-right">Fecha</span>
+                      </div>
+                      <div>
+                        {purchaseHistory.map((purchase) => (
+                          <a 
+                            key={purchase.id}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.dispatchEvent(new MouseEvent('mouseout', { bubbles: true }));
+                            }}
+                            href={
+                              purchase.service_type === 'profession'
+                                ? `https://www.wowhead.com/wotlk/spell=${SKILL_WOWHEAD_MAP[Number(purchase.item_id)] || purchase.item_id}`
+                                : purchase.service_type === 'level_boost' || purchase.service_type === 'gold_pack'
+                                ? '#'
+                                : `https://www.wowhead.com/wotlk/item=${purchase.item_id}`
+                            }
+                            data-wowhead={
+                              purchase.service_type === 'level_boost' || purchase.service_type === 'gold_pack'
+                                ? 'disabled'
+                                : purchase.service_type === 'profession'
+                                ? `spell=${SKILL_WOWHEAD_MAP[Number(purchase.item_id)] || purchase.item_id}&domain=wotlk`
+                                : `item=${purchase.item_id}&domain=wotlk`
+                            }
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="grid grid-cols-[90px_1fr_120px_140px] items-center px-4 py-3 border-t border-white/10 text-xs sm:text-sm text-slate-200 hover:bg-white/5 transition-colors group"
+                          >
+                            <span className="text-xs font-black text-cyan-300">#{purchase.item_id}</span>
+                            <div className="min-w-0">
+                              <p className="font-semibold truncate">
+                                <span className="font-black text-white hover:text-cyan-400 transition-colors">
+                                  {purchase.item_name || 'Item sin nombre'}
+                                </span>
+                              </p>
+                              <p className="text-[11px] text-slate-400">{purchase.character_name || 'Sin personaje'}{purchase.is_gift ? ' • Regalo' : ''}</p>
+                            </div>
+                            <span className="text-right font-bold text-amber-300">{purchase.price} {purchase.currency === 'vp' ? 'Estelas' : purchase.currency.toUpperCase()}</span>
+                            <span className="text-right text-xs text-slate-400">{formatPurchaseDate(purchase.created_at)}</span>
+                          </a>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}

@@ -47,6 +47,27 @@ const RECAPTCHA_SITE_KEY = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY || '';
     const [error, setError] = useState('');
     const [recaptchaReady, setRecaptchaReady] = useState(false);
     const [copied, setCopied] = useState(false);
+    const [checkingSession, setCheckingSession] = useState(true);
+
+    // Si ya hay sesión iniciada, siempre enviar al dashboard
+    useEffect(() => {
+      try {
+        const storedUser = localStorage.getItem('user');
+        if (!storedUser) {
+          setCheckingSession(false);
+          return;
+        }
+
+        const parsed = JSON.parse(storedUser);
+        if (parsed?.id && parsed?.username) {
+          router.replace('/dashboard');
+          return;
+        }
+      } catch {
+        // Ignorar errores de parsing y continuar al home
+      }
+      setCheckingSession(false);
+    }, [router]);
 
     // ── Load reCAPTCHA v3 script ──────────────────────────────
     useEffect(() => {
@@ -237,6 +258,10 @@ const RECAPTCHA_SITE_KEY = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY || '';
         setLoading(false);
       }
     };
+
+  if (checkingSession) {
+    return null;
+  }
 
   return (
     <>

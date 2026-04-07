@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { authPool, pool as charPool } from '@/lib/db';
 
+const MARKET_HOLD_ACCOUNT_ID = 1;
+
 export async function POST(req: Request) {
   try {
     const { listingId, accountId } = await req.json();
@@ -59,8 +61,8 @@ export async function POST(req: Request) {
       // 4. Mover el personaje de la Cuenta Retenida al Comprador (TrinityCore Characters DB)
       // Como esto va a charPool (otra BD), asuminos éxito acá si afecta 1 row
       const [updateChar]: any = await charPool.query(
-        'UPDATE characters SET account = ? WHERE guid = ? AND account = 999999',
-        [buyerId, listing.char_guid]
+        'UPDATE characters SET account = ? WHERE guid = ? AND account = ?',
+        [buyerId, listing.char_guid, MARKET_HOLD_ACCOUNT_ID]
       );
 
       if (updateChar.affectedRows === 0) {

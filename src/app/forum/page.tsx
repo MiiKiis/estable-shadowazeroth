@@ -29,6 +29,65 @@ type Topic = {
   created_at: string;
 };
 
+type CharacterOption = {
+  guid: number;
+  name: string;
+  level: number;
+  race: number;
+  classId: number;
+  gender: number;
+  online: number;
+};
+
+function getForumCharacterStorageKey(userId: number): string {
+  return `forum_selected_character_${userId}`;
+}
+
+const CLASS_LABELS: Record<number, string> = {
+  1: 'Guerrero',
+  2: 'Paladin',
+  3: 'Cazador',
+  4: 'Picaro',
+  5: 'Sacerdote',
+  6: 'DK',
+  7: 'Chaman',
+  8: 'Mago',
+  9: 'Brujo',
+  11: 'Druida',
+};
+
+const CLASS_IMAGE_BY_ID: Record<number, string> = {
+  1: '/clases/warrior.png',
+  2: '/clases/paladin.png',
+  3: '/clases/hunter.png',
+  4: '/clases/rogue.png',
+  5: '/clases/priest.png',
+  6: '/clases/deathknight.png',
+  7: '/clases/shaman.png',
+  8: '/clases/mage.png',
+  9: '/clases/warlock.png',
+  11: '/clases/druid.png',
+};
+
+const RACE_LABELS: Record<number, string> = {
+  1: 'Humano',
+  2: 'Orco',
+  3: 'Enano',
+  4: 'Elfo Noche',
+  5: 'No-muerto',
+  6: 'Tauren',
+  7: 'Gnomo',
+  8: 'Trol',
+  10: 'Elfo Sangre',
+  11: 'Draenei',
+};
+
+function getFactionByRace(race: number): 'Aliado' | 'Horda' | 'Neutral' {
+  if ([1, 3, 4, 7, 11].includes(race)) return 'Aliado';
+  if ([2, 5, 6, 8, 10].includes(race)) return 'Horda';
+  return 'Neutral';
+}
+
 
 
 
@@ -47,6 +106,7 @@ export default function ForumPage() {
   const [showNewTopic, setShowNewTopic] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [topics, setTopics] = useState<any[]>([]);
+  const [allTopics, setAllTopics] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [isStaffGM, setIsStaffGM] = useState(false);
   const [showAddSection, setShowAddSection] = useState(false);
@@ -96,7 +156,12 @@ export default function ForumPage() {
   }
   const [newTitle, setNewTitle]     = useState('');
   const [newCategory, setNewCategory] = useState('announcements');
+  const [characters, setCharacters] = useState<CharacterOption[]>([]);
+  const [selectedCharacterName, setSelectedCharacterName] = useState('');
   const [realmStats, setRealmStats] = useState<RealmStats | null>(null);
+
+  const selectedCharacter = characters.find((c) => c.name === selectedCharacterName) || null;
+  const selectedFaction = getFactionByRace(Number(selectedCharacter?.race || 0));
 
   const openNewTopic = () => {
     // Lock posting category to the section where the user clicked
@@ -116,6 +181,12 @@ export default function ForumPage() {
   const [posting, setPosting]       = useState(false);
   const [postError, setPostError]   = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [draftReportId, setDraftReportId] = useState('');
+  const [draftReportCharacter, setDraftReportCharacter] = useState('');
+  const [draftReportDate, setDraftReportDate] = useState('');
+  const [reportIdQuery, setReportIdQuery] = useState('');
+  const [reportCharacterQuery, setReportCharacterQuery] = useState('');
+  const [reportDateQuery, setReportDateQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<TopicStatusFilter>('all');
   const [sortBy, setSortBy] = useState<TopicSort>('latest');
   const [onlyPinned, setOnlyPinned] = useState(false);
@@ -209,6 +280,35 @@ export default function ForumPage() {
     const u = raw ? JSON.parse(raw) : null;
     if (u) setUser(u);
 
+    if (u?.id) {
+      fetch(`/api/characters?accountId=${u.id}`)
+        .then(r => r.json())
+        .then(d => {
+          const chars = Array.isArray(d?.characters) ? d.characters : [];
+          const parsed: CharacterOption[] = chars
+            .map((c: any) => ({
+              guid: Number(c?.guid || 0),
+              name: String(c?.name || ''),
+              level: Number(c?.level || 0),
+              race: Number(c?.race || 0),
+              classId: Number(c?.class || 0),
+              gender: Number(c?.gender || 0),
+              online: Number(c?.online || 0),
+            }))
+            .filter((c: CharacterOption) => c.guid > 0 && c.name.length > 0)
+            .sort((a: CharacterOption, b: CharacterOption) => a.name.localeCompare(b.name));
+          setCharacters(parsed);
+
+          const saved = String(localStorage.getItem(getForumCharacterStorageKey(Number(u.id))) || '');
+          const preferred = parsed.some((p) => p.name === saved) ? saved : (parsed[0]?.name || '');
+          setSelectedCharacterName(preferred);
+        })
+        .catch(() => {
+          setCharacters([]);
+          setSelectedCharacterName('');
+        });
+    }
+
     // Fetch dynamic sections
     const userIdQuery = u?.id ? `?userId=${u.id}` : '';
     fetch(`/api/forum/sections${userIdQuery}`)
@@ -226,12 +326,28 @@ export default function ForumPage() {
   }, []);
 
   useEffect(() => {
+    if (!user?.id) return;
+    if (!selectedCharacterName) return;
+    localStorage.setItem(getForumCharacterStorageKey(Number(user.id)), selectedCharacterName);
+  }, [selectedCharacterName, user?.id]);
+
+  useEffect(() => {
     setLoading(true);
-    const url = `/api/forum/topics?category=${activeCategory}`;
-    fetch(url)
-      .then(r => r.json())
-      .then(d => setTopics(Array.isArray(d.topics) ? d.topics : []))
-      .catch(() => setTopics([]))
+    const scopedUrl = `/api/forum/topics?category=${activeCategory}`;
+    const allUrl = '/api/forum/topics';
+
+    Promise.all([
+      fetch(scopedUrl).then((r) => r.json()).catch(() => ({ topics: [] })),
+      fetch(allUrl).then((r) => r.json()).catch(() => ({ topics: [] })),
+    ])
+      .then(([scopedData, allData]) => {
+        setTopics(Array.isArray(scopedData?.topics) ? scopedData.topics : []);
+        setAllTopics(Array.isArray(allData?.topics) ? allData.topics : []);
+      })
+      .catch(() => {
+        setTopics([]);
+        setAllTopics([]);
+      })
       .finally(() => setLoading(false));
   }, [activeCategory]);
 
@@ -247,13 +363,17 @@ export default function ForumPage() {
   const handleNewTopic = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) { router.push('/'); return; }
+    if (!selectedCharacterName.trim()) {
+      setPostError('Debes seleccionar un personaje para publicar en el foro.');
+      return;
+    }
     setPosting(true);
     setPostError('');
     try {
       const res = await fetch('/api/forum/topics', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.id, title: newTitle, category: topicPostCategory, comment: newBody }),
+        body: JSON.stringify({ userId: user.id, title: newTitle, category: topicPostCategory, comment: newBody, characterName: selectedCharacterName }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Error creando tema');
@@ -266,13 +386,27 @@ export default function ForumPage() {
     }
   };
 
+  const applyReportFilters = () => {
+    setReportIdQuery(draftReportId);
+    setReportCharacterQuery(draftReportCharacter);
+    setReportDateQuery(draftReportDate);
+  };
+
   const filtered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
+    const reportId = reportIdQuery.trim();
+    const reportCharacter = reportCharacterQuery.trim().toLowerCase();
+    const reportDate = reportDateQuery.trim();
+    const hasReportControl = !!(reportId || reportCharacter || reportDate);
 
     const hasSubsections = sections.some(s => s.parent_id === activeCategory);
-    const items = (hasSubsections) 
-      ? [] 
-      : topics.filter((topic) => topic.category === activeCategory)
+    const source = hasReportControl
+      ? allTopics
+      : topics;
+
+    const items = (hasSubsections && !hasReportControl)
+      ? []
+      : source.filter((topic) => hasReportControl ? true : topic.category === activeCategory)
       .filter((topic) => {
         if (!q) return true;
         return (
@@ -291,6 +425,26 @@ export default function ForumPage() {
         if (statusFilter === 'solved') return tag === 'SOLUCIONADO';
         if (statusFilter === 'active') return tag === 'ACTIVO';
         return true;
+      })
+      .filter((topic) => {
+        if (!hasReportControl) return true;
+
+        if (reportId && !String(topic.id).includes(reportId)) return false;
+
+        if (reportCharacter && !String(topic?.author?.username || '').toLowerCase().includes(reportCharacter)) {
+          return false;
+        }
+
+        if (reportDate) {
+          const created = new Date(topic.created_at);
+          const yyyy = created.getFullYear();
+          const mm = String(created.getMonth() + 1).padStart(2, '0');
+          const dd = String(created.getDate()).padStart(2, '0');
+          const localDate = `${yyyy}-${mm}-${dd}`;
+          if (localDate !== reportDate) return false;
+        }
+
+        return true;
       });
 
     const sorted = [...items];
@@ -307,7 +461,7 @@ export default function ForumPage() {
     }
 
     return sorted;
-  }, [topics, activeCategory, searchQuery, statusFilter, sortBy, onlyPinned, onlyLocked]);
+  }, [topics, allTopics, sections, activeCategory, searchQuery, reportIdQuery, reportCharacterQuery, reportDateQuery, statusFilter, sortBy, onlyPinned, onlyLocked]);
   const latestTopics = topics.slice(0, 5);
   const handleAddSection = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -397,6 +551,11 @@ export default function ForumPage() {
           <div className="mb-8 rounded-3xl border border-purple-900/40 bg-black/50 backdrop-blur-xl p-6 shadow-[0_0_40px_rgba(105,55,180,0.25)]">
             <h2 className="text-xl font-black mb-5 text-purple-300">Crear nuevo tema</h2>
             <form onSubmit={handleNewTopic} className="space-y-4">
+              <div className="rounded-xl border border-amber-500/30 bg-amber-900/10 px-4 py-3">
+                <p className="text-[10px] uppercase tracking-wider text-amber-300 font-black">Publicando como personaje</p>
+                <p className="text-sm text-white font-bold mt-1">{selectedCharacterName || 'Selecciona tu personaje en el panel derecho'}</p>
+              </div>
+
               <input
                 type="text"
                 placeholder="Título del tema"
@@ -448,7 +607,7 @@ export default function ForumPage() {
               <div className="rounded-2xl border border-purple-500/35 bg-gradient-to-r from-purple-950/40 to-indigo-950/30 p-2.5">
                 <button
                   type="submit"
-                  disabled={posting}
+                  disabled={posting || !selectedCharacterName || characters.length === 0}
                   className={`w-full py-4 rounded-xl font-black uppercase tracking-[0.16em] text-sm transition-all border ${posting ? 'bg-purple-800/60 animate-pulse cursor-not-allowed border-purple-400/20 text-purple-100' : 'bg-gradient-to-r from-fuchsia-700 via-purple-600 to-indigo-600 hover:from-fuchsia-600 hover:to-indigo-500 border-purple-200/40 text-white shadow-[0_0_28px_rgba(168,85,247,0.55)] hover:shadow-[0_0_40px_rgba(168,85,247,0.75)]'}`}
                 >
                   {posting ? 'PUBLICANDO...' : 'CLICK AQUI PARA PUBLICAR TEMA'}
@@ -682,6 +841,12 @@ export default function ForumPage() {
                 type="button"
                 onClick={() => {
                   setSearchQuery('');
+                  setDraftReportId('');
+                  setDraftReportCharacter('');
+                  setDraftReportDate('');
+                  setReportIdQuery('');
+                  setReportCharacterQuery('');
+                  setReportDateQuery('');
                   setStatusFilter('all');
                   setSortBy('latest');
                   setOnlyPinned(false);
@@ -785,6 +950,109 @@ export default function ForumPage() {
           </section>
 
           <aside className="rounded-2xl border border-purple-900/35 bg-black/45 backdrop-blur-sm p-4 space-y-5 xl:sticky xl:top-28">
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.2em] font-black text-amber-300 mb-2">Hablar como personaje</p>
+              <div className="rounded-xl border border-amber-600/35 bg-amber-950/20 p-3 space-y-2">
+                <div className="rounded-xl border border-white/10 bg-black/40 p-3 flex items-center gap-3">
+                  <div className={`w-16 h-16 rounded-xl border overflow-hidden flex items-center justify-center ${selectedFaction === 'Horda' ? 'border-red-500/50 bg-red-900/20' : selectedFaction === 'Aliado' ? 'border-blue-500/50 bg-blue-900/20' : 'border-gray-500/40 bg-gray-900/20'}`}>
+                    {!!selectedCharacter && !!CLASS_IMAGE_BY_ID[selectedCharacter.classId] ? (
+                      <Image
+                        src={CLASS_IMAGE_BY_ID[selectedCharacter.classId]}
+                        alt={CLASS_LABELS[selectedCharacter.classId] || 'Clase'}
+                        width={64}
+                        height={64}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <span className="text-xl font-black text-gray-300">?</span>
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-black text-amber-200 truncate">{selectedCharacterName || 'Selecciona tu personaje'}</p>
+                    <p className="text-[11px] text-gray-300 truncate">
+                      {selectedCharacter ? `${CLASS_LABELS[selectedCharacter.classId] || `Clase ${selectedCharacter.classId}`} · ${RACE_LABELS[selectedCharacter.race] || `Raza ${selectedCharacter.race}`} · Lvl ${selectedCharacter.level}` : 'Sin datos de personaje'}
+                    </p>
+                    <div className="mt-1 flex items-center gap-2">
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full border font-black uppercase tracking-wider ${selectedFaction === 'Horda' ? 'border-red-500/45 text-red-300 bg-red-900/20' : selectedFaction === 'Aliado' ? 'border-blue-500/45 text-blue-300 bg-blue-900/20' : 'border-gray-500/45 text-gray-300 bg-gray-900/20'}`}>
+                        {selectedFaction}
+                      </span>
+                      {!!selectedCharacter && (
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full border font-black uppercase tracking-wider ${selectedCharacter.online ? 'border-emerald-500/45 text-emerald-300 bg-emerald-900/20' : 'border-gray-500/45 text-gray-300 bg-gray-900/20'}`}>
+                          {selectedCharacter.online ? 'Online' : 'Offline'}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <select
+                  className="w-full bg-black/50 border border-amber-500/45 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-400/60"
+                  value={selectedCharacterName}
+                  onChange={(e) => setSelectedCharacterName(e.target.value)}
+                >
+                  {characters.length === 0 ? (
+                    <option value="">Sin personajes disponibles</option>
+                  ) : (
+                    characters.map((c) => <option key={c.guid} value={c.name}>{c.name} (lvl {c.level})</option>)
+                  )}
+                </select>
+                <p className="text-[11px] text-gray-300">Tus temas y respuestas usaran este PJ en lugar del nombre de cuenta.</p>
+              </div>
+            </div>
+
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.2em] font-black text-rose-300 mb-2">Control de denuncias</p>
+              <form
+                className="rounded-xl border border-rose-700/35 bg-rose-950/20 p-3 space-y-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  applyReportFilters();
+                }}
+              >
+                <input
+                  type="text"
+                  value={draftReportId}
+                  onChange={(e) => setDraftReportId(e.target.value)}
+                  placeholder="ID de denuncia (ej: 154)"
+                  className="w-full bg-black/50 border border-rose-500/30 rounded-xl px-3 py-2 text-sm text-white placeholder:text-gray-500 focus:outline-none focus:border-rose-400/60"
+                />
+                <input
+                  type="text"
+                  value={draftReportCharacter}
+                  onChange={(e) => setDraftReportCharacter(e.target.value)}
+                  placeholder="Nombre de personaje"
+                  className="w-full bg-black/50 border border-rose-500/30 rounded-xl px-3 py-2 text-sm text-white placeholder:text-gray-500 focus:outline-none focus:border-rose-400/60"
+                />
+                <input
+                  type="date"
+                  value={draftReportDate}
+                  onChange={(e) => setDraftReportDate(e.target.value)}
+                  className="w-full bg-black/50 border border-rose-500/30 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-rose-400/60"
+                />
+                <button
+                  type="submit"
+                  className="w-full rounded-xl border border-rose-400/50 bg-rose-700/30 hover:bg-rose-700/45 text-rose-100 text-[11px] font-black uppercase tracking-wider py-2"
+                >
+                  Buscar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDraftReportId('');
+                    setDraftReportCharacter('');
+                    setDraftReportDate('');
+                    setReportIdQuery('');
+                    setReportCharacterQuery('');
+                    setReportDateQuery('');
+                  }}
+                  className="w-full rounded-xl border border-rose-500/40 bg-rose-900/20 hover:bg-rose-800/30 text-rose-200 text-[11px] font-black uppercase tracking-wider py-2"
+                >
+                  Limpiar control denuncias
+                </button>
+                <p className="text-[11px] text-gray-300">Puedes usar solo 1 campo. Busca resultados relacionados en todo el foro.</p>
+              </form>
+            </div>
+
             <div>
               <p className="text-[10px] uppercase tracking-[0.2em] font-black text-cyan-300 mb-2">Estado del Reino</p>
               <div className="rounded-xl border border-cyan-700/30 bg-cyan-950/20 p-3">

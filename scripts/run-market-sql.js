@@ -33,7 +33,7 @@ async function run() {
         else console.error(e);
       }
       try {
-        await conn.query("INSERT IGNORE INTO `account` (`id`, `username`, `salt`, `verifier`, `email`, `dp`, `vp`) VALUES (999999, 'MARKET_HOLD_ACCOUNT', 0x00, 0x00, 'market@shadow-azeroth.com', 0, 0);");
+        await conn.query("INSERT IGNORE INTO `account` (`id`, `username`, `salt`, `verifier`, `email`, `dp`, `vp`) VALUES (1, 'MARKET_HOLD_ACCOUNT', 0x00, 0x00, 'market@shadow-azeroth.com', 0, 0);");
         console.log('Hold account inserted');
       } catch (e) { console.error('Insert error', e); }
       

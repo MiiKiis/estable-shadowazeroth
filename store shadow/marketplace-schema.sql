@@ -9,7 +9,7 @@ USE `auth`;
 -- Todo personaje listado será movido a esta cuenta temporalmente para que ni
 -- el dueño original pueda acceder a él in-game mientras esté publicado.
 INSERT IGNORE INTO `account` (`id`, `username`, `salt`, `verifier`, `email`, `last_ip`, `vp`, `dp`) 
-VALUES (999999, 'MARKET_HOLD_ACCOUNT', 0x00, 0x00, 'market@shadow-azeroth.com', '127.0.0.1', 0, 0);
+VALUES (1, 'MARKET_HOLD_ACCOUNT', 0x00, 0x00, 'market@shadow-azeroth.com', '127.0.0.1', 0, 0);
 
 -- 2. Tabla de publicaciones / listados activos
 CREATE TABLE IF NOT EXISTS `marketplace_listings` (

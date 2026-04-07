@@ -3,6 +3,21 @@ import { authPool } from '@/lib/db';
 import { assertAdmin } from '@/lib/admin';
 import { RowDataPacket, ResultSetHeader } from 'mysql2';
 
+function normalizeShopImageInput(raw: unknown): string {
+  const value = String(raw ?? '').trim();
+  if (!value) return 'inv_misc_questionmark';
+
+  if (/^https?:\/\//i.test(value)) {
+    return value;
+  }
+
+  if (value.startsWith('/')) {
+    return value;
+  }
+
+  return value.toLowerCase();
+}
+
 export async function GET(request: Request) {
   if (!authPool) {
     return NextResponse.json({ error: 'Database pool not available' }, { status: 500 });
@@ -98,7 +113,7 @@ export async function POST(request: Request) {
 
     const tier = Math.max(0, Math.min(999, Number(body?.tier ?? 0)));
     const classMask = Math.max(0, Number(body?.classMask ?? 0));
-    const image = String(body?.image || 'inv_misc_questionmark').trim() || 'inv_misc_questionmark';
+    const image = normalizeShopImageInput(body?.image);
     const soapCount = Math.max(1, Math.min(255, Number(body?.soapCount ?? 1)));
     const service_type = String(body?.serviceType || 'none');
     const service_data = body?.serviceData ? String(body.serviceData) : null;
@@ -167,7 +182,7 @@ export async function PUT(request: Request) {
     const category = String(body?.category || 'misc').toLowerCase().trim() || 'misc';
     const tier = Math.max(0, Math.min(999, Number(body?.tier ?? 0)));
     const classMask = Math.max(0, Number(body?.classMask ?? 0));
-    const image = String(body?.image || 'inv_misc_questionmark').trim();
+    const image = normalizeShopImageInput(body?.image);
     const soapCount = Math.max(1, Math.min(255, Number(body?.soapCount ?? 1)));
     const service_type = String(body?.serviceType || 'none');
     const service_data = body?.serviceData ? String(body.serviceData) : null;

@@ -259,21 +259,21 @@ export default function MarketplacePage() {
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
 
           {/* TITLE */}
-          <div className="text-center mb-12">
-            <h1 className="text-5xl md:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-yellow-400 to-orange-500 uppercase tracking-widest drop-shadow-2xl mb-4">
+          <div className="text-center mb-10 sm:mb-12">
+            <h1 className="text-3xl sm:text-5xl md:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-yellow-400 to-orange-500 uppercase tracking-wide sm:tracking-widest drop-shadow-2xl mb-3 sm:mb-4 leading-tight">
               Tienda oscura
             </h1>
-            <p className="text-lg text-gray-300 font-light max-w-2xl mx-auto">
+            <p className="text-sm sm:text-base md:text-lg text-gray-300 font-light max-w-2xl mx-auto px-2">
               El mercado negro - Intercambia personajes por puntos de donacion
             </p>
           </div>
 
           {/* PUBLISH BUTTON */}
-          <div className="flex justify-end mb-8">
+          <div className="flex justify-center sm:justify-end mb-8">
             {accountId ? (
               <button
                 onClick={() => setIsModalOpen(true)}
-                className="px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-800 hover:from-green-500 hover:to-emerald-700 text-white font-bold rounded-xl shadow-[0_0_20px_rgba(16,185,129,0.4)] transition-all hover:scale-105 active:scale-95"
+                className="w-full sm:w-auto px-5 sm:px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-800 hover:from-green-500 hover:to-emerald-700 text-white font-bold rounded-xl shadow-[0_0_20px_rgba(16,185,129,0.4)] transition-all hover:scale-105 active:scale-95"
               >
                 ⚖️ Publicar Personaje
               </button>
@@ -321,10 +321,10 @@ export default function MarketplacePage() {
 
                   <div>
                     <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Clase</label>
-                    <div className="grid grid-cols-5 gap-1.5">
+                    <div className="grid grid-cols-4 sm:grid-cols-5 gap-1.5">
                       <button
                         onClick={() => setFilterClass('all')}
-                        className={`col-span-5 py-1.5 rounded-lg text-xs font-bold border transition-all ${filterClass === 'all' ? 'bg-yellow-600/30 border-yellow-500 text-yellow-300' : 'bg-gray-800/40 border-gray-700 text-gray-400 hover:border-gray-500'}`}
+                        className={`col-span-4 sm:col-span-5 py-1.5 rounded-lg text-xs font-bold border transition-all ${filterClass === 'all' ? 'bg-yellow-600/30 border-yellow-500 text-yellow-300' : 'bg-gray-800/40 border-gray-700 text-gray-400 hover:border-gray-500'}`}
                       >
                         Todas las clases
                       </button>
@@ -386,7 +386,7 @@ export default function MarketplacePage() {
                           <span className="text-[10px] text-yellow-100 font-bold uppercase tracking-widest">PUNTOS DE DONACIÓN</span>
                         </div>
 
-                        {/* Faction stripe */}
+                        {/* Faction band */}
                         <div className={`h-1 w-full ${faction === 'horde' ? 'bg-gradient-to-r from-red-700 to-red-500' : 'bg-gradient-to-r from-blue-700 to-blue-500'}`} />
 
                         {/* Header Area (Expanded padding to prevent icon overlap) */}
@@ -509,23 +509,23 @@ export default function MarketplacePage() {
               className="fixed inset-0 z-[70] flex items-start justify-center p-4 pt-10 bg-black/95 backdrop-blur-lg overflow-y-auto"
               onClick={e => { if (e.target === e.currentTarget) setInspectItem(null); }}
             >
-              <div className="bg-[#08080f] border border-white/10 rounded-3xl w-full max-w-5xl shadow-[0_0_80px_rgba(0,0,0,0.8)] overflow-hidden mb-10">
+              <div className="bg-[#08080f] border border-white/10 rounded-2xl sm:rounded-3xl w-full max-w-5xl shadow-[0_0_80px_rgba(0,0,0,0.8)] overflow-hidden mb-10">
 
                 {/* ── Top bar ── */}
                 <div
-                  className="relative h-24 flex items-end px-8 pb-4"
+                  className="relative h-20 sm:h-24 flex items-end px-4 sm:px-8 pb-4"
                   style={{ background: `linear-gradient(135deg, ${cls.color}22, transparent), linear-gradient(to bottom, #111, #08080f)` }}
                 >
                   <div className={`absolute top-0 left-0 right-0 h-1 ${faction === 'horde' ? 'bg-gradient-to-r from-red-700 to-red-500' : 'bg-gradient-to-r from-blue-700 to-blue-500'}`} />
 
                   {/* Class icon */}
-                  <div className="relative h-16 w-16 rounded-full overflow-hidden border-2 flex-shrink-0 mr-4" style={{ borderColor: cls.color }}>
+                  <div className="relative h-12 w-12 sm:h-16 sm:w-16 rounded-full overflow-hidden border-2 flex-shrink-0 mr-3 sm:mr-4" style={{ borderColor: cls.color }}>
                     <Image src={`/clases/${cls.slug}.png`} alt={cls.name} fill className="object-cover" />
                   </div>
 
                   <div className="flex-grow">
-                    <h2 className="text-3xl font-black text-white leading-tight">{inspectItem.char.name}</h2>
-                    <p className="text-sm font-bold" style={{ color: cls.color }}>
+                    <h2 className="text-xl sm:text-3xl font-black text-white leading-tight truncate">{inspectItem.char.name}</h2>
+                    <p className="text-xs sm:text-sm font-bold truncate" style={{ color: cls.color }}>
                       {cls.name} · Nivel {inspectItem.char.level} · {inspectItem.char.raceName}
                     </p>
                   </div>
@@ -542,7 +542,7 @@ export default function MarketplacePage() {
                 <div className="grid lg:grid-cols-[1fr_320px] divide-y lg:divide-y-0 lg:divide-x divide-white/10">
 
                   {/* Left: 3D Viewer + paperdoll */}
-                  <div className="p-6 space-y-6">
+                  <div className="p-4 sm:p-6 space-y-6">
 
                     {/* ── Character Showcase (CSS 3D) ── */}
                     <div>
@@ -550,9 +550,8 @@ export default function MarketplacePage() {
                         <span className="text-yellow-500">◆</span> Vitrina del Personaje
                       </h4>
                       <div
-                        className="relative rounded-2xl overflow-hidden border border-white/10 flex items-center justify-center"
+                        className="relative rounded-2xl overflow-hidden border border-white/10 flex items-center justify-center h-[250px] sm:h-[320px]"
                         style={{
-                          height: 320,
                           background: `radial-gradient(ellipse at center, ${cls.color}18 0%, #000 70%)`,
                         }}
                       >
@@ -615,17 +614,17 @@ export default function MarketplacePage() {
                         </div>
 
                         {/* Large Faction badge overlay */}
-                        <div className={`absolute top-4 left-4 p-3 rounded-2xl shadow-2xl transition-all hover:scale-110 flex items-center gap-4 border-2 ${faction === 'horde' ? 'bg-red-950/80 border-red-500/60 shadow-red-900/50 text-red-100' : 'bg-blue-950/80 border-blue-500/60 shadow-blue-900/50 text-blue-100'}`}>
+                        <div className={`absolute top-3 left-3 sm:top-4 sm:left-4 p-2.5 sm:p-3 rounded-2xl shadow-2xl transition-all hover:scale-110 flex items-center gap-2 sm:gap-4 border-2 ${faction === 'horde' ? 'bg-red-950/80 border-red-500/60 shadow-red-900/50 text-red-100' : 'bg-blue-950/80 border-blue-500/60 shadow-blue-900/50 text-blue-100'}`}>
                           <Image
                             src={`/faccion/${faction === 'horde' ? 'horda' : 'alianza'}.png`}
                             width={64}
                             height={64}
                             alt={faction}
-                            className="w-16 h-16 object-contain drop-shadow-[0_0_12px_rgba(0,0,0,0.6)]"
+                            className="w-10 h-10 sm:w-16 sm:h-16 object-contain drop-shadow-[0_0_12px_rgba(0,0,0,0.6)]"
                           />
                           <div className="flex flex-col leading-none">
-                            <span className="text-[10px] font-bold opacity-60 tracking-widest">FACCIÓN</span>
-                            <span className="font-black text-xl tracking-tighter">{faction === 'horde' ? 'HORDA' : 'ALIANZA'}</span>
+                            <span className="text-[9px] sm:text-[10px] font-bold opacity-60 tracking-widest">FACCIÓN</span>
+                            <span className="font-black text-sm sm:text-xl tracking-tighter">{faction === 'horde' ? 'HORDA' : 'ALIANZA'}</span>
                           </div>
                         </div>
                       </div>
@@ -695,7 +694,7 @@ export default function MarketplacePage() {
                   </div>
 
                   {/* Right panel: stats + professions */}
-                  <div className="p-6 space-y-6">
+                  <div className="p-4 sm:p-6 space-y-6">
                     {/* Stats */}
                     <div>
                       <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-2">
@@ -781,7 +780,7 @@ export default function MarketplacePage() {
                         <button
                           onClick={() => { handleBuy(inspectItem.id, inspectItem.priceDp); setInspectItem(null); }}
                           disabled={!accountId}
-                          className={`w-full py-4 rounded-xl font-black text-base uppercase tracking-wider transition-all ${
+                          className={`w-full py-3 sm:py-4 rounded-xl font-black text-sm sm:text-base uppercase tracking-wider transition-all ${
                             accountId
                               ? 'bg-gradient-to-r from-yellow-600 to-orange-700 hover:from-yellow-500 hover:to-orange-600 text-white shadow-[0_0_20px_rgba(234,179,8,0.35)] hover:shadow-[0_0_30px_rgba(234,179,8,0.5)] hover:scale-105'
                               : 'bg-gray-800 text-gray-600 cursor-not-allowed'
@@ -803,12 +802,12 @@ export default function MarketplacePage() {
         ══════════════════════════════════════════════════════════════ */}
         {isModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-            <div className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl">
-              <div className="px-6 py-4 bg-gray-800 border-b border-gray-700 flex justify-between items-center">
-                <h2 className="text-xl font-bold text-white">Publicar Personaje</h2>
+              <div className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl">
+                <div className="px-4 sm:px-6 py-4 bg-gray-800 border-b border-gray-700 flex justify-between items-center">
+                  <h2 className="text-lg sm:text-xl font-bold text-white">Publicar Personaje</h2>
                 <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-white text-xl">&times;</button>
               </div>
-              <div className="p-6 space-y-5">
+              <div className="p-4 sm:p-6 space-y-5">
                 <div>
                   <label className="block text-sm font-medium text-gray-400 mb-2">Selecciona un Campeón</label>
                   <select
