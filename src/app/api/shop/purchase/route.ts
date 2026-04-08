@@ -67,6 +67,42 @@ async function ensurePurchaseHistoryTable(connection: Awaited<ReturnType<typeof 
   `);
 }
 
+async function ensurePurchaseLockTable(connection: Awaited<ReturnType<typeof authPool.getConnection>>) {
+  await connection.query(`
+    CREATE TABLE IF NOT EXISTS shop_purchase_locks (
+      account_id INT UNSIGNED NOT NULL,
+      lock_token VARCHAR(64) NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (account_id),
+      KEY idx_created_at (created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+}
+
+async function acquirePurchaseLock(
+  connection: Awaited<ReturnType<typeof authPool.getConnection>>,
+  accountId: number,
+  lockToken: string
+): Promise<boolean> {
+  await connection.query('DELETE FROM shop_purchase_locks WHERE created_at < (NOW() - INTERVAL 2 MINUTE)');
+  const [result]: any = await connection.query(
+    'INSERT IGNORE INTO shop_purchase_locks (account_id, lock_token) VALUES (?, ?)',
+    [accountId, lockToken]
+  );
+  return Number(result?.affectedRows || 0) > 0;
+}
+
+async function releasePurchaseLock(
+  connection: Awaited<ReturnType<typeof authPool.getConnection>>,
+  accountId: number,
+  lockToken: string
+) {
+  await connection.query(
+    'DELETE FROM shop_purchase_locks WHERE account_id = ? AND lock_token = ?',
+    [accountId, lockToken]
+  );
+}
+
 // ─── SOAP utilities ──────────────────────────────────────────────────────────
 
 type SoapVariant = {
@@ -389,6 +425,8 @@ async function sendSoapItem(params: {
 export async function POST(request: Request) {
   let connection: Awaited<ReturnType<typeof authPool.getConnection>> | null = null;
   let userId = 0, itemId = 0, isGift = false, chosenCurrency = '', currency = '';
+  let purchaseLockAcquired = false;
+  let purchaseLockToken = '';
 
   try {
     const body = await request.json();
@@ -413,6 +451,19 @@ export async function POST(request: Request) {
 
     connection = await authPool.getConnection();
     await ensurePurchaseHistoryTable(connection);
+    await ensurePurchaseLockTable(connection);
+
+    purchaseLockToken = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    purchaseLockAcquired = await acquirePurchaseLock(connection, userId, purchaseLockToken);
+    if (!purchaseLockAcquired) {
+      return NextResponse.json(
+        {
+          error: 'Ya hay una compra en proceso para esta cuenta. Espera un momento e intenta de nuevo.',
+          code: 'PURCHASE_IN_PROGRESS',
+        },
+        { status: 429 }
+      );
+    }
     
     // Iniciar transacción explícita
     await connection.query('START TRANSACTION');
@@ -680,7 +731,7 @@ export async function POST(request: Request) {
             itemsToDeliver = bundleItems.map(b => ({ entry: Number(b.id || b.item_id), count: Number(b.count || 1) }));
           }
         } catch {}
-      } else if (item.soap_item_entry) {
+      } else if (item.soap_item_entry && item.service_type !== 'profession') {
         itemsToDeliver.push({ entry: Number(item.soap_item_entry), count: Number(item.soap_item_count || 1) });
       }
 
@@ -754,6 +805,13 @@ export async function POST(request: Request) {
     );
   } finally {
     if (connection) {
+      if (purchaseLockAcquired) {
+        try {
+          await releasePurchaseLock(connection, userId, purchaseLockToken);
+        } catch (lockReleaseErr) {
+          console.error('No se pudo liberar shop_purchase_lock:', lockReleaseErr);
+        }
+      }
       connection.release();
     }
   }
