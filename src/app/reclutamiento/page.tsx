@@ -55,6 +55,7 @@ export default function ReclutamientoPage() {
 
   const [claimingStarter, setClaimingStarter] = useState(false);
   const [claimingRewardId, setClaimingRewardId] = useState<number | null>(null);
+  const [resendingInviteId, setResendingInviteId] = useState<number | null>(null);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
@@ -146,7 +147,19 @@ export default function ReclutamientoPage() {
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error || 'No se pudo enviar la invitacion.');
 
-      setMessage(data?.message || 'Invitacion enviada con exito.');
+      const referralId = Number(data?.referralId || 0);
+      const emailDeliveryId = String(data?.emailDeliveryId || '').trim();
+      const successMessageBase = String(data?.message || 'Invitacion enviada con exito.').trim();
+      const successParts = [successMessageBase];
+
+      if (referralId > 0) {
+        successParts.push(`ID de reclutamiento: ${referralId}`);
+      }
+      if (emailDeliveryId) {
+        successParts.push(`ID de correo: ${emailDeliveryId}`);
+      }
+
+      setMessage(successParts.join(' | '));
       setFriendName('');
       setFriendEmail('');
       await loadStatus(user.id);
@@ -209,6 +222,44 @@ export default function ReclutamientoPage() {
       setError(String(err?.message || 'Error desconocido'));
     } finally {
       setClaimingRewardId(null);
+    }
+  };
+
+  const handleResendInvite = async (referralId: number) => {
+    if (!user) return;
+
+    setResendingInviteId(referralId);
+    setMessage('');
+    setError('');
+
+    try {
+      const response = await fetch('/api/recruit/resend', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountId: user.id, referralId }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || 'No se pudo reenviar la invitacion.');
+
+      const resultReferralId = Number(data?.referralId || 0);
+      const emailDeliveryId = String(data?.emailDeliveryId || '').trim();
+      const successMessageBase = String(data?.message || 'Invitacion reenviada con exito.').trim();
+      const successParts = [successMessageBase];
+
+      if (resultReferralId > 0) {
+        successParts.push(`ID de reclutamiento: ${resultReferralId}`);
+      }
+      if (emailDeliveryId) {
+        successParts.push(`ID de correo: ${emailDeliveryId}`);
+      }
+
+      setMessage(successParts.join(' | '));
+      await loadStatus(user.id);
+    } catch (err: any) {
+      setError(String(err?.message || 'Error desconocido'));
+    } finally {
+      setResendingInviteId(null);
     }
   };
 
@@ -319,6 +370,21 @@ export default function ReclutamientoPage() {
                               ? `Nivel reclutado: ${Number(row.recruited_max_level || 0)} / 80`
                               : 'Esperando registro'}
                         </p>
+                        {row.status === 'invited' && (
+                          <button
+                            type="button"
+                            onClick={() => handleResendInvite(Number(row.id))}
+                            disabled={resendingInviteId === Number(row.id)}
+                            className={`inline-flex h-8 items-center justify-center gap-2 rounded-lg px-3 text-[10px] font-black uppercase tracking-wider border ${
+                              resendingInviteId === Number(row.id)
+                                ? 'border-gray-600/40 bg-gray-800/30 text-gray-400 cursor-not-allowed'
+                                : 'border-cyan-300/45 bg-cyan-500/15 text-cyan-100 hover:bg-cyan-500/30'
+                            }`}
+                          >
+                            <Send className="h-3.5 w-3.5" />
+                            {resendingInviteId === Number(row.id) ? 'Reenviando...' : 'Reenviar correo'}
+                          </button>
+                        )}
                       </div>
                     </div>
                   ))

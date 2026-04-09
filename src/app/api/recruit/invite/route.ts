@@ -44,31 +44,59 @@ export async function POST(request: Request) {
     const recruiterUsername = String(accRows[0].username || '').trim() || `Cuenta ${recruiterAccountId}`;
 
     const inviteToken = buildRecruitInviteToken();
-    await connection.query(
+    const [insertResult]: any = await connection.query(
       `INSERT INTO recruit_a_friend_referrals
        (recruiter_account_id, recruiter_username, friend_name, friend_email, invite_token)
        VALUES (?, ?, ?, ?, ?)`,
       [recruiterAccountId, recruiterUsername, friendName, friendEmail, inviteToken]
     );
+    const referralId = Number(insertResult?.insertId || 0);
+    if (!Number.isInteger(referralId) || referralId <= 0) {
+      throw new Error('No se pudo obtener la ID de reclutamiento creada.');
+    }
 
     const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_BASE_URL || new URL(request.url).origin;
-    const inviteUrl = `${appBaseUrl}/?ref=${encodeURIComponent(inviteToken)}&register=1`;
+    const inviteUrl = `${appBaseUrl}/?ref=${encodeURIComponent(inviteToken)}&rid=${referralId}&register=1`;
 
+    let emailDeliveryId: string | null = null;
     try {
-      await sendRecruitInviteEmail({
+      const emailResult = await sendRecruitInviteEmail({
         toEmail: friendEmail,
         friendName,
         recruiterUsername,
         inviteUrl,
+        referralId,
+        inviteToken,
       });
+      if (emailResult?.skipped) {
+        return NextResponse.json(
+          {
+            error: 'Servicio de correo no configurado. Configura RESEND_API_KEY para enviar la invitacion por email.',
+            inviteUrl,
+            referralId,
+          },
+          { status: 503 }
+        );
+      }
+      emailDeliveryId = (emailResult as any)?.id || null;
     } catch (emailError) {
       console.error('Recruit invite email error:', emailError);
+      return NextResponse.json(
+        {
+          error: 'La invitacion fue creada, pero no se pudo enviar el correo de reclutamiento.',
+          inviteUrl,
+          referralId,
+        },
+        { status: 502 }
+      );
     }
 
     return NextResponse.json({
       success: true,
       message: 'Invitacion enviada correctamente.',
       inviteUrl,
+      referralId,
+      emailDeliveryId,
     });
   } catch (error: any) {
     console.error('Recruit invite POST error:', error);

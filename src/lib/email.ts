@@ -231,58 +231,33 @@ export async function sendRecruitInviteEmail(params: {
   friendName: string;
   recruiterUsername: string;
   inviteUrl: string;
+  referralId: number;
+  inviteToken?: string;
 }) {
   if (!canSendEmail()) return { skipped: true };
 
-  if (recruitTemplateId) {
-    const templatePayload = {
-      from: defaultFrom,
-      to: params.toEmail,
-      subject: 'Invitacion a Shadow Azeroth - Recluta un Amigo',
-      templateId: recruitTemplateId,
-      data: {
-        ACCOUNT_NAME: params.friendName,
-        FRIEND_NAME: params.friendName,
-        RECRUITER_NAME: params.recruiterUsername,
-        INVITE_URL: params.inviteUrl,
-      },
-    };
-
-    try {
-      await (resend!.emails.send as any)(templatePayload);
-      return { skipped: false };
-    } catch (templateSendError: unknown) {
-      console.warn('No se pudo enviar con templateId de reclutamiento, se usara fallback HTML:', templateSendError);
-    }
-  }
+  const referralIdText = String(Math.trunc(Number(params.referralId || 0)) || '');
+  const inviteTokenText = String(params.inviteToken || '').trim();
+  const templateValues = {
+    ACCOUNT_NAME: params.friendName,
+    FRIEND_NAME: params.friendName,
+    RECRUITER_NAME: params.recruiterUsername,
+    INVITE_URL: params.inviteUrl,
+    RECRUITMENT_ID: referralIdText,
+    REFERRAL_ID: referralIdText,
+    INVITE_TOKEN: inviteTokenText,
+  };
 
   let htmlContent = '';
 
   if (recruitTemplateId) {
-    try {
-      const templateResponse = await resend!.templates.get(recruitTemplateId);
-      if ('data' in templateResponse && templateResponse.data) {
-        const templateData = templateResponse.data as { html?: string };
-        const templateHtml = String(templateData.html || '').trim();
-        if (templateHtml) {
-          htmlContent = templateHtml;
-        }
-      }
-    } catch (templateError: unknown) {
-      console.warn('No se pudo obtener template de reclutamiento en Resend, se usara fallback inline:', templateError);
+    htmlContent = await getResendTemplateHtml(recruitTemplateId);
+    if (htmlContent) {
+      htmlContent = applyTemplateData(htmlContent, templateValues);
     }
   }
 
-  if (htmlContent) {
-    htmlContent = htmlContent
-      .replace(/{{ACCOUNT_NAME}}/g, params.friendName)
-      .replace(/{{FRIEND_NAME}}/g, params.friendName)
-      .replace(/{{RECRUITER_NAME}}/g, params.recruiterUsername)
-      .replace(/{{INVITE_URL}}/g, params.inviteUrl)
-      .replace(/\[\[INVITE_URL\]\]/g, params.inviteUrl);
-  }
-
-  await resend!.emails.send({
+  const { data, error } = await resend!.emails.send({
     from: defaultFrom,
     to: params.toEmail,
     subject: 'Invitacion a Shadow Azeroth - Recluta un Amigo',
@@ -296,9 +271,11 @@ export async function sendRecruitInviteEmail(params: {
           <div style="padding:24px;">
             <p style="margin:0 0 12px;">Hola <strong>${params.friendName}</strong>,</p>
             <p style="margin:0 0 12px;">Usa este enlace especial para crear tu cuenta vinculada al sistema de reclutamiento.</p>
+            <p style="margin:0 0 12px;">ID de reclutamiento: <strong>${referralIdText || 'N/A'}</strong></p>
             <div style="margin:20px 0;">
               <a href="${params.inviteUrl}" style="display:inline-block;padding:12px 18px;border-radius:10px;background:#0ea5e9;color:#ffffff;text-decoration:none;font-weight:700;">Crear Cuenta Vinculada</a>
             </div>
+            ${inviteTokenText ? `<p style="margin:0 0 12px;color:#93c5fd;">Token de invitacion: <strong>${inviteTokenText}</strong></p>` : ''}
             <p style="margin:0 0 12px;color:#cbd5e1;">Beneficios al reclutarte: recibiras 4 bolsas de bienvenida + 300g para reclamar desde el panel web y elegir el personaje destino.</p>
             <p style="margin:0;color:#67e8f9;font-weight:700;">Nos vemos en Azeroth.</p>
           </div>
@@ -307,5 +284,9 @@ export async function sendRecruitInviteEmail(params: {
     `,
   });
 
-  return { skipped: false };
+  if (error) {
+    throw error;
+  }
+
+  return { skipped: false, id: data?.id || null };
 }
